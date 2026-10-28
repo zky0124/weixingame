@@ -1,0 +1,23 @@
+# 本地环境、凭据、备份与构建缓存不进入仓库
+.本地缓存/
+资料备份/
+开发环境/
+安装包/
+node_modules/
+library/
+temp/
+build/
+.env
+.env.*
+!.env.example
+*.log
+*.exe
+*.msi
+*.zip
+*.7z
+*.pfx
+*.p12
+*.pem
+*.key
+Thumbs.db
+.DS_Store
