@@ -15,6 +15,11 @@ function checkMetas(dir) {
 }
 checkMetas(assets);
 const { BattleModel, damage, guardPost } = require(path.resolve(process.argv[2], '战斗/BattleModel.js'));
+const { project, unproject, farmPlacementError, DEFAULT_FARM } = require(path.resolve(process.argv[2], '城市/CityLayout.js'));
+for (let col = -4; col <= 4; col++) for (let row = -4; row <= 4; row++) {
+  const point = project(col + 0.5, row + 0.5);
+  assert.deepEqual(unproject(point.x, point.y), { col, row }, '网格投影与点击反解应一致');
+}
 const tick = (m, seconds) => { for (let i = 0; i < Math.round(seconds * 30); i++) m.tick(1 / 30); };
 const battle = m => { for (let i = 0; i < 90 * 30 && m.state.phase === 'battle'; i++) m.tick(1 / 30); };
 const m = new BattleModel();
@@ -35,6 +40,22 @@ assert(m.guards.every(u => u.target === 0 && u.swing === 0), '回位后不残留
 assert.deepEqual(m.guards.map(u => [u.id, u.hp]), postHp, '回位不复活、不免费回血');
 assert(!m.startRound(), '教学应先建设'); assert(m.upgrade()); assert(!m.upgrade());
 assert.equal(m.state.coins, 23); assert(m.buildFarm()); assert(!m.buildFarm()); assert.equal(m.state.coins, 18);
+const town = new BattleModel(); town.state.cityLevel = 1; town.state.coins = 10;
+for (const cell of [{ col: -1, row: -1 }, { col: 1, row: -3 }, { col: 4, row: 4 }, { col: 2.5, row: -2 }]) {
+  assert(farmPlacementError(cell)); assert(!town.buildFarm(cell));
+  assert.equal(town.state.coins, 10, '无效选址不得扣费'); assert(!town.state.farm);
+}
+const customPlot = { col: -4, row: 2 };
+assert(town.buildFarm(customPlot)); assert.equal(town.state.coins, 5);
+assert.deepEqual(town.state.farmPlot, customPlot);
+const townRestored = BattleModel.load(town.save()); assert(townRestored);
+assert.deepEqual(townRestored.state.farmPlot, customPlot, '建成位置应保存恢复');
+assert(!townRestored.buildFarm(DEFAULT_FARM)); assert.equal(townRestored.state.coins, 5);
+const oldTown = town.save(); delete oldTown.state.farmPlot;
+const oldTownRestored = BattleModel.load(oldTown); assert(oldTownRestored);
+assert.deepEqual(oldTownRestored.state.farmPlot, DEFAULT_FARM); assert.equal(oldTownRestored.state.coins, 5);
+const badTown = town.save(); badTown.state.farmPlot = { col: 0, row: 0 };
+assert.equal(BattleModel.load(badTown), null, '拒绝与主城重叠的损坏建筑位置');
 tick(m, 10); assert.equal(m.state.coins, 19);
 assert(m.startRound()); assert.equal(m.state.coins, 20, '迎敌和在线收入叠加');
 assert(m.setFocus(m.enemies[0].id));
@@ -73,4 +94,4 @@ const bad = m.save(); bad.state.coins = -100; assert.equal(BattleModel.load(bad)
 const duplicated = m.save(); duplicated.state.units.push(duplicated.state.units[0]); assert.equal(BattleModel.load(duplicated), null);
 const nullUnit = m.save(); nullUnit.state.units.push(null); assert.equal(BattleModel.load(nullUnit), null);
 assert.equal(BattleModel.load({}), null); assert.equal(BattleModel.load(null), null);
-console.log('首战验证通过：经济与4回合、战后持续计时/步行回位、固定驻守位/补员、旧存档兼容、失败回滚及防重复奖励。');
+console.log('验证通过：经济与4回合、回位/旧存档、网格投影、建筑占地/扣费/位置存档、失败回滚及防重复奖励。');

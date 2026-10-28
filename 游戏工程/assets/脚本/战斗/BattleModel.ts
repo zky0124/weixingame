@@ -1,4 +1,5 @@
 import { UNIT_DATA } from '../数据/UnitData';
+import { CityCell, DEFAULT_FARM, farmPlacementError } from '../城市/CityLayout';
 
 export type Kind = 'guard' | 'goblin';
 export type Phase = 'ready' | 'battle' | 'victory' | 'defeat' | 'complete';
@@ -12,6 +13,7 @@ export interface Snapshot {
   version: 1; phase: Phase; round: number; coins: number; cityLevel: number;
   cityHp: number; farm: boolean; farmTime: number; kingPaid: boolean;
   units: Unit[]; nextId: number; focus: number; elapsed: number;
+  farmPlot?: CityCell;
 }
 export interface SaveData { state: Snapshot; checkpoint: Snapshot | null }
 export const RULES = { cityHp: 100, upgradeCost: 30, farmCost: 5, recruitCost: 1, armyCap: 8, farmSeconds: 10, totalRounds: 4, cityRadius: 1.5 } as const;
@@ -50,9 +52,11 @@ export class BattleModel {
     this.state.coins -= RULES.upgradeCost; this.state.cityLevel = 1;
     this.message = '简易房屋建成，解锁第一块农田。'; return true;
   }
-  buildFarm(): boolean {
+  buildFarm(plot: CityCell = DEFAULT_FARM): boolean {
     if (!this.state.cityLevel || this.state.farm || this.state.coins < RULES.farmCost || this.state.phase === 'defeat') return false;
+    if (farmPlacementError(plot)) return false;
     this.state.coins -= RULES.farmCost; this.state.farm = true; this.state.farmTime = 0;
+    this.state.farmPlot = { ...plot };
     this.message = '农田开始生产：在线每10秒＋1铜币，每次迎敌另＋1铜币。'; return true;
   }
   startRound(): boolean {
@@ -165,6 +169,7 @@ export class BattleModel {
       if (!s || s.version !== 1 || !['ready', 'battle', 'victory', 'defeat', 'complete'].includes(s.phase)) return false;
       if (!Number.isInteger(s.round) || s.round < 0 || s.round > 4 || !Number.isInteger(s.coins) || s.coins < 0 || s.coins > 1e12) return false;
       if (![0, 1].includes(s.cityLevel) || !Number.isFinite(s.cityHp) || s.cityHp < 0 || s.cityHp > RULES.cityHp || typeof s.farm !== 'boolean' || typeof s.kingPaid !== 'boolean') return false;
+      if (s.farmPlot !== undefined && (!s.farm || farmPlacementError(s.farmPlot))) return false;
       if (!Number.isFinite(s.farmTime) || s.farmTime < 0 || s.farmTime >= 10 || !Number.isFinite(s.elapsed) || s.elapsed < 0 || !Number.isInteger(s.nextId) || !Number.isInteger(s.focus)) return false;
       if (!Array.isArray(s.units) || s.units.length > 32 || s.units.some(u => !u || typeof u !== 'object') || new Set(s.units.map(u => u.id)).size !== s.units.length) return false;
       const posts = s.units.filter(u => u.kind === 'guard' && u.post !== undefined).map(u => u.post);
@@ -178,6 +183,7 @@ export class BattleModel {
     // 保留v0.1.0的金钱、血量和回合；只给旧护卫补充缺失的驻守编号。
     for (const snapshot of [model.state, model.checkpoint]) {
       if (!snapshot) continue;
+      if (snapshot.farm && !snapshot.farmPlot) snapshot.farmPlot = { ...DEFAULT_FARM };
       const occupied = new Set(snapshot.units.filter(u => u.kind === 'guard' && u.post !== undefined).map(u => u.post));
       for (const unit of snapshot.units.filter(u => u.kind === 'guard' && u.post === undefined)) {
         let post = 0; while (occupied.has(post)) post++;
