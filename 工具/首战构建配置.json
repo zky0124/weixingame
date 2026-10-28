@@ -1,0 +1,7 @@
+{
+  "platform": "web-mobile",
+  "debug": true,
+  "startScene": "9e51caf6-dbc8-49e4-8915-4115403ec492",
+  "webOrientation": "landscape",
+  "mainBundleCompressionType": "merge_dep"
+}

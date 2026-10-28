@@ -24,3 +24,5 @@ Thumbs.db
 .idea/
 .vscode/
 *.tsbuildinfo
+# 编辑器自动写入的授权/服务信息不属于共享工程配置
+/游戏工程/settings/v2/packages/information.json
