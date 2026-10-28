@@ -20,5 +20,9 @@ jobs:
           node-version: '24'
       - name: 检查文档、单位与图鉴
         run: node 工具/检查项目资料.cjs
+      - name: 验证首战数据与战斗逻辑
+        run: |
+          npm ci --prefix 游戏工程
+          npm test --prefix 游戏工程
       - name: 检查差异格式
         run: git diff --check
