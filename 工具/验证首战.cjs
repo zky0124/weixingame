@@ -14,7 +14,7 @@ function checkMetas(dir) {
   }
 }
 checkMetas(assets);
-const { BattleModel, damage } = require(path.resolve(process.argv[2], '战斗/BattleModel.js'));
+const { BattleModel, damage, guardPost } = require(path.resolve(process.argv[2], '战斗/BattleModel.js'));
 const tick = (m, seconds) => { for (let i = 0; i < Math.round(seconds * 30); i++) m.tick(1 / 30); };
 const battle = m => { for (let i = 0; i < 90 * 30 && m.state.phase === 'battle'; i++) m.tick(1 / 30); };
 const m = new BattleModel();
@@ -26,7 +26,13 @@ const resumed = BattleModel.load(m.save()); assert(resumed);
 battle(m); battle(resumed);
 assert.equal(m.state.phase, 'victory'); assert.equal(m.state.coins, 53);
 assert.deepEqual(resumed.state, m.state, '交战中保存恢复应产生相同结果');
+const postHp = m.guards.map(u => [u.id, u.hp]);
+const clearedAt = m.state.elapsed;
 tick(m, 20); assert.equal(m.state.coins, 53, '不重复发首胜奖励');
+assert(m.state.elapsed > clearedAt, '战后世界时钟仍运行');
+assert(m.guards.every(u => Math.hypot(u.x - guardPost(u.post).x, u.y - guardPost(u.post).y) < 1e-6), '战后步行回到各自原始驻守点');
+assert(m.guards.every(u => u.target === 0 && u.swing === 0), '回位后不残留攻击目标或攻击动作');
+assert.deepEqual(m.guards.map(u => [u.id, u.hp]), postHp, '回位不复活、不免费回血');
 assert(!m.startRound(), '教学应先建设'); assert(m.upgrade()); assert(!m.upgrade());
 assert.equal(m.state.coins, 23); assert(m.buildFarm()); assert(!m.buildFarm()); assert.equal(m.state.coins, 18);
 tick(m, 10); assert.equal(m.state.coins, 19);
@@ -40,6 +46,24 @@ while (m.state.round < 4) {
   assert(m.startRound()); battle(m); assert.notEqual(m.state.phase, 'defeat');
 }
 assert.equal(m.state.phase, 'complete'); assert(!m.startRound());
+tick(m, 15);
+assert(m.guards.every(u => Math.hypot(u.x - guardPost(u.post).x, u.y - guardPost(u.post).y) < 1e-6), '最后一波结束也继续回位');
+const legacy = m.save();
+for (const state of [legacy.state, legacy.checkpoint]) if (state) for (const unit of state.units) delete unit.post;
+const migrated = BattleModel.load(legacy); assert(migrated);
+assert.equal(migrated.state.coins, legacy.state.coins); assert.equal(migrated.state.round, legacy.state.round);
+assert.deepEqual(migrated.guards.map(u => u.hp), m.guards.map(u => u.hp));
+assert.equal(new Set(migrated.guards.map(u => u.post)).size, migrated.guards.length, '旧存档自动补唯一驻守位');
+const slots = new BattleModel(); slots.state.coins = 10;
+const survivorSlots = slots.guards.slice(1).map(u => [u.id, u.post]);
+slots.state.units = slots.guards.slice(1); assert(slots.recruit());
+assert.deepEqual(slots.guards.slice(0, 2).map(u => [u.id, u.post]), survivorSlots, '补员不改存活者原来的驻守位');
+assert.equal(slots.guards[2].post, 0, '新护卫补空位');
+const midReturn = new BattleModel(); midReturn.state.phase = 'victory'; midReturn.state.round = 1;
+midReturn.guards[0].x = 9; tick(midReturn, 0.5);
+assert(midReturn.guards[0].x < 9 && midReturn.guards[0].x > guardPost(0).x, '回位应渐进移动而非瞬移');
+const restoredReturn = BattleModel.load(midReturn.save()); assert(restoredReturn);
+tick(midReturn, 5); tick(restoredReturn, 5); assert.deepEqual(restoredReturn.state, midReturn.state, '回位过程中保存恢复一致');
 const f = new BattleModel(); f.startRound(); f.state.units = f.enemies; f.state.cityHp = 1;
 battle(f); assert.equal(f.state.phase, 'defeat');
 const savedFailure = BattleModel.load(f.save()); assert(savedFailure); assert(savedFailure.retry());
@@ -49,4 +73,4 @@ const bad = m.save(); bad.state.coins = -100; assert.equal(BattleModel.load(bad)
 const duplicated = m.save(); duplicated.state.units.push(duplicated.state.units[0]); assert.equal(BattleModel.load(duplicated), null);
 const nullUnit = m.save(); nullUnit.state.units.push(null); assert.equal(BattleModel.load(nullUnit), null);
 assert.equal(BattleModel.load({}), null); assert.equal(BattleModel.load(null), null);
-console.log('首战验证通过：53→23→18经济、在线/回合收入、4回合、集火、失败回滚、存档恢复/校验、防重复奖励。');
+console.log('首战验证通过：经济与4回合、战后持续计时/步行回位、固定驻守位/补员、旧存档兼容、失败回滚及防重复奖励。');

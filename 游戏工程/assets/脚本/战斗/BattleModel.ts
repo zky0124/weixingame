@@ -5,6 +5,8 @@ export type Phase = 'ready' | 'battle' | 'victory' | 'defeat' | 'complete';
 export interface Unit {
   id: number; kind: Kind; x: number; y: number; hp: number; cooldown: number;
   flash: number; swing: number; target: number;
+  /** 固定驻守槽位；旧存档由加载时补齐，敌人不使用此字段。 */
+  post?: number;
 }
 export interface Snapshot {
   version: 1; phase: Phase; round: number; coins: number; cityLevel: number;
@@ -15,6 +17,10 @@ export interface SaveData { state: Snapshot; checkpoint: Snapshot | null }
 export const RULES = { cityHp: 100, upgradeCost: 30, farmCost: 5, recruitCost: 1, armyCap: 8, farmSeconds: 10, totalRounds: 4, cityRadius: 1.5 } as const;
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 export function damage(attack: number, defense: number): number { return Math.max(0, attack - defense); }
+export function guardPost(post: number): { x: number; y: number } {
+  const angle = post * 2.399;
+  return { x: Math.cos(angle) * 2.7, y: Math.sin(angle) * 2.7 };
+}
 
 /** 与渲染、平台和存储无关；游戏和自动验证共用此战斗逻辑。 */
 export class BattleModel {
@@ -28,8 +34,11 @@ export class BattleModel {
   get guards(): Unit[] { return this.state.units.filter(u => u.kind === 'guard' && u.hp > 0); }
   get enemies(): Unit[] { return this.state.units.filter(u => u.kind === 'goblin' && u.hp > 0); }
   private addGuard(): void {
-    const angle = this.guards.length * 2.399;
-    this.state.units.push({ id: this.state.nextId++, kind: 'guard', x: Math.cos(angle) * 2.7, y: Math.sin(angle) * 2.7, hp: UNIT_DATA.guard.hp, cooldown: 0, flash: 0, swing: 0, target: 0 });
+    const occupied = new Set(this.guards.map(u => u.post));
+    let post = 0;
+    while (occupied.has(post)) post++;
+    const home = guardPost(post);
+    this.state.units.push({ id: this.state.nextId++, kind: 'guard', ...home, post, hp: UNIT_DATA.guard.hp, cooldown: 0, flash: 0, swing: 0, target: 0 });
   }
   recruit(): boolean {
     if (this.state.phase === 'defeat' || this.state.coins < RULES.recruitCost || this.guards.length >= RULES.armyCap) return false;
@@ -79,7 +88,19 @@ export class BattleModel {
       const count = Math.floor((s.farmTime + 1e-8) / RULES.farmSeconds);
       if (count) { s.coins += count; s.farmTime = Math.max(0, s.farmTime - count * RULES.farmSeconds); }
     }
-    if (s.phase !== 'battle') return;
+    // 清场只结束交战，世界时钟不停止；存活士兵走回自己的固定驻守点。
+    if (s.phase !== 'battle') {
+      for (const unit of this.guards) {
+        unit.target = 0; unit.flash = Math.max(0, unit.flash - dt); unit.swing = Math.max(0, unit.swing - dt);
+        unit.cooldown = Math.max(0, unit.cooldown - dt);
+        const home = guardPost(unit.post!);
+        const dx = home.x - unit.x, dy = home.y - unit.y, distance = Math.hypot(dx, dy);
+        const step = UNIT_DATA.guard.speed * dt;
+        if (distance <= step) { unit.x = home.x; unit.y = home.y; }
+        else { unit.x += dx / distance * step; unit.y += dy / distance * step; }
+      }
+      return;
+    }
     const strikes: { from: number; to: number; amount: number }[] = [];
     const living = s.units.filter(u => u.hp > 0);
     for (const unit of living) {
@@ -130,6 +151,8 @@ export class BattleModel {
     if (s.cityHp === 0) { s.phase = 'defeat'; this.message = '庇护所被攻破。可免费回到战前检查点，再调整部队。'; }
     else if (!this.enemies.length) {
       s.phase = s.round === RULES.totalRounds ? 'complete' : 'victory';
+      s.focus = 0;
+      for (const unit of this.guards) { unit.target = 0; unit.swing = 0; }
       if (!s.kingPaid) { s.kingPaid = true; s.coins += 50; this.message = '首战告捷！击杀获得3铜币，国王另送50铜币。进入主城升级。'; }
       else this.message = s.phase === 'complete' ? '前4回合验证完成！这只是玩法原型，后续将继续建设营地与定居点。' : '守住了！可自由建设和补员，准备好后再迎敌。';
     }
@@ -144,11 +167,23 @@ export class BattleModel {
       if (![0, 1].includes(s.cityLevel) || !Number.isFinite(s.cityHp) || s.cityHp < 0 || s.cityHp > RULES.cityHp || typeof s.farm !== 'boolean' || typeof s.kingPaid !== 'boolean') return false;
       if (!Number.isFinite(s.farmTime) || s.farmTime < 0 || s.farmTime >= 10 || !Number.isFinite(s.elapsed) || s.elapsed < 0 || !Number.isInteger(s.nextId) || !Number.isInteger(s.focus)) return false;
       if (!Array.isArray(s.units) || s.units.length > 32 || s.units.some(u => !u || typeof u !== 'object') || new Set(s.units.map(u => u.id)).size !== s.units.length) return false;
+      const posts = s.units.filter(u => u.kind === 'guard' && u.post !== undefined).map(u => u.post);
+      if (posts.some(p => !Number.isInteger(p) || p! < 0 || p! >= RULES.armyCap) || new Set(posts).size !== posts.length) return false;
+      if (s.units.filter(u => u.kind === 'guard').length > RULES.armyCap) return false;
       return s.units.every(u => u && ['guard', 'goblin'].includes(u.kind) && Number.isInteger(u.id) && u.id > 0 && u.id < s.nextId && Number.isFinite(u.x) && Math.abs(u.x) < 30 && Number.isFinite(u.y) && Math.abs(u.y) < 20 && Number.isFinite(u.hp) && u.hp > 0 && u.hp <= UNIT_DATA[u.kind].hp && [u.cooldown, u.flash, u.swing].every(v => Number.isFinite(v) && v >= 0) && Number.isInteger(u.target));
     };
     if (!valid(data.state) || (data.checkpoint !== null && (!valid(data.checkpoint) || !['ready', 'victory'].includes(data.checkpoint.phase)))) return null;
     if (['battle', 'defeat'].includes(data.state.phase) && !data.checkpoint) return null;
     const model = new BattleModel(); model.state = clone(data.state); model.checkpoint = clone(data.checkpoint);
+    // 保留v0.1.0的金钱、血量和回合；只给旧护卫补充缺失的驻守编号。
+    for (const snapshot of [model.state, model.checkpoint]) {
+      if (!snapshot) continue;
+      const occupied = new Set(snapshot.units.filter(u => u.kind === 'guard' && u.post !== undefined).map(u => u.post));
+      for (const unit of snapshot.units.filter(u => u.kind === 'guard' && u.post === undefined)) {
+        let post = 0; while (occupied.has(post)) post++;
+        unit.post = post; occupied.add(post);
+      }
+    }
     model.message = '已恢复本地进度；关闭期间不结算离线收益。'; return model;
   }
 }
