@@ -1,0 +1,44 @@
+{
+  "临时庇护所": {
+    "file": "游戏工程/assets/resources/建筑/临时庇护所.png",
+    "width": 1254,
+    "height": 1254,
+    "bytes": 1187418,
+    "sha256": "7c4faaa911c82dbb0434ebb748a8ff487577d91dd1dc21bc8adec6a90bb68d41",
+    "transparentRatio": 0.7016,
+    "visibleBounds": {
+      "x": 135,
+      "y": 163,
+      "width": 1014,
+      "height": 937
+    }
+  },
+  "简易房屋": {
+    "file": "游戏工程/assets/resources/建筑/简易房屋.png",
+    "width": 1254,
+    "height": 1254,
+    "bytes": 1467142,
+    "sha256": "82fb129e9d159db2631fa5feedbdce13ca8bf2a3be459116f5d6c52ddfd3cf8b",
+    "transparentRatio": 0.5952,
+    "visibleBounds": {
+      "x": 112,
+      "y": 88,
+      "width": 1047,
+      "height": 1059
+    }
+  },
+  "农田": {
+    "file": "游戏工程/assets/resources/建筑/农田.png",
+    "width": 1254,
+    "height": 1254,
+    "bytes": 1215987,
+    "sha256": "e2c3be6a73b19ab33331445c99502f49dfeda20bb0b9fabe88e5ebe2013fe819",
+    "transparentRatio": 0.7119,
+    "visibleBounds": {
+      "x": 62,
+      "y": 250,
+      "width": 1133,
+      "height": 768
+    }
+  }
+}
