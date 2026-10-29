@@ -1,8 +1,9 @@
-import { _decorator, Component, Node, UITransform, Canvas, Camera, Color, Graphics, Label, Mask, view, screen, profiler, ResolutionPolicy, Layers, EventTouch, Vec3, sys, game, Game, BlockInputEvents } from 'cc';
+import { _decorator, Component, Node, UITransform, Canvas, Camera, Color, Graphics, Label, Mask, view, screen, profiler, ResolutionPolicy, Layers, EventTouch, EventMouse, Vec3, sys, game, Game, BlockInputEvents } from 'cc';
 import { BattleModel, RULES, guardPost } from '../战斗/BattleModel';
 import { UNIT_DATA } from '../数据/UnitData';
 import { CityCell, DEFAULT_FARM, project, unproject, farmPlacementError, isHall, isRoad, inFarm } from '../城市/CityLayout';
 import { BuildingArt, BuildingKind } from './BuildingArt';
+import { MapViewport, MapPoint } from './MapViewport';
 
 const { ccclass } = _decorator;
 const SAVE_KEY = 'frontier-prototype-save-v1';
@@ -42,8 +43,11 @@ export class BattleView extends Component {
   private farmSelected = false;
   private citySelection: 'hall' | 'farm' | 'ground' = 'hall';
   private farmCandidate: CityCell = { ...DEFAULT_FARM };
-  private cityPan = { x: 0, y: 0 };
-  private cityDrag = { x: 0, y: 0, startX: 0, startY: 0, moved: false };
+  private cityView = new MapViewport({ x: 450, y: 200 });
+  private battleView = new MapViewport({ x: 600, y: 280 });
+  private cityWorld!: Node;
+  private battleWorld!: Node;
+  private battleReset!: Label;
   private accumulator = 0;
   private saveClock = 0;
   private hidden = false;
@@ -73,7 +77,7 @@ export class BattleView extends Component {
     game.off(Game.EVENT_HIDE, this.onHide, this);
     game.off(Game.EVENT_SHOW, this.onShow, this);
   }
-  private onHide(): void { this.hidden = true; this.persist(); }
+  private onHide(): void { this.hidden = true; this.cityView.cancel(); this.battleView.cancel(); this.persist(); }
   private onShow(): void { this.hidden = false; this.accumulator = 0; }
   private node2D(name: string, parent: Node, x = 0, y = 0, w = 0, h = 0): Node {
     const n = new Node(name); n.layer = Layers.Enum.UI_2D; parent.addChild(n);
@@ -101,7 +105,9 @@ export class BattleView extends Component {
     this.rect(g, -w / 2, -44, w, 88, C.ink, 15);
     this.rect(g, -w / 2 + 3, -38, w - 6, 79, primary ? C.gold : C.parchment, 12);
     const label = this.text(n, title, 0, 2, w - 18, 72, 32, C.ink);
-    n.on(Node.EventType.TOUCH_END, (e: EventTouch) => { e.propagationStopped = true; action(); this.refresh(); this.persist(); });
+    let blocked = false;
+    n.on(Node.EventType.TOUCH_START, (e: EventTouch) => { blocked = this.cityView.active || this.battleView.active || e.getAllTouches().length > 1; });
+    n.on(Node.EventType.TOUCH_END, (e: EventTouch) => { e.propagationStopped = true; if (blocked || e.getAllTouches().length > 1) return; this.cityView.cancel(); this.battleView.cancel(); action(); this.refresh(); this.persist(); });
     return label;
   }
   private createScene(): void {
@@ -113,12 +119,15 @@ export class BattleView extends Component {
     camera.near = 0.1; camera.far = 2000; camera.visibility = Layers.Enum.UI_2D;
     camera.clearColor = new Color(C.forest);
     const canvas = this.canvas.addComponent(Canvas); canvas.cameraComponent = camera;
-    this.art = this.graphics('草原与城市占位', this.canvas);
+    const battleViewport = this.node2D('战场地图视口', this.canvas, 0, 0, 1280, 450);
+    battleViewport.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
+    this.battleWorld = this.node2D('战场镜头内容', battleViewport);
+    this.art = this.graphics('草原与城市占位', this.battleWorld);
     this.drawLandscape();
-    this.battleHallImage = BuildingArt.createNode(this.canvas, '战场主城美术');
-    this.units = this.graphics('战斗单位占位', this.canvas);
+    this.battleHallImage = BuildingArt.createNode(this.battleWorld, '战场主城美术');
+    this.units = this.graphics('战斗单位占位', this.battleWorld);
     this.battlefield = this.node2D('战场触控', this.canvas, 0, 0, 1200, 450);
-    this.battlefield.on(Node.EventType.TOUCH_END, this.tapBattlefield, this);
+    this.bindMapInput(this.battlefield, this.battleWorld, this.battleView, p => this.tapBattlefield(p));
     this.safeUi = this.node2D('安全区界面', this.canvas, 0, 0, 1280, 720);
     const header = this.graphics('顶部信息底板', this.safeUi);
     this.rect(header, -616, 244, 1232, 92, C.forest);
@@ -126,6 +135,10 @@ export class BattleView extends Component {
     this.battleTitle = this.node2D('战场标题', this.safeUi);
     this.text(this.battleTitle, '蛮荒开拓 · 首战原型', -390, 218, 440, 40, 28, C.parchment);
     this.artStatus = this.text(this.battleTitle, '建筑美术加载中', 390, 218, 440, 40, 26, C.muted);
+    const reset = this.node2D('战场视角归中', this.battleTitle, 0, 211, 210, 56);
+    this.rect(reset.addComponent(Graphics), -105, -28, 210, 56, C.parchment);
+    this.battleReset = this.text(reset, '归中 · 100%', 0, 0, 200, 50, 26, C.ink);
+    reset.on(Node.EventType.TOUCH_END, (e: EventTouch) => { e.propagationStopped = true; if (this.battleView.active) return; this.battleView.reset(); this.applyMapViews(); });
     this.hint = this.text(this.safeUi, '', 0, -211, 1150, 76, 29, C.white);
     this.battleBar = this.node2D('战场操作栏', this.safeUi);
     this.button(this.battleBar, '进入主城', -463, -292, 260, () => { this.cityOpen = true; });
@@ -150,33 +163,17 @@ export class BattleView extends Component {
     this.rect(bg, -640, -300, 1280, 590, '#647b50', 0);
     const mapViewport = this.node2D('城镇地图视口', this.cityPanel, 0, 35, 1280, 370);
     mapViewport.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
-    this.cityArt = this.graphics('倾斜俯视城镇', mapViewport);
+    this.cityWorld = this.node2D('城镇镜头内容', mapViewport);
+    this.cityArt = this.graphics('倾斜俯视城镇', this.cityWorld);
     this.cityArt.node.setPosition(0, -35);
-    const buildingLayer = this.node2D('城内建筑美术', mapViewport, 0, -35);
+    const buildingLayer = this.node2D('城内建筑美术', this.cityWorld, 0, -35);
     this.cityHallImage = BuildingArt.createNode(buildingLayer, '城内主城美术');
     this.cityFarmImage = BuildingArt.createNode(buildingLayer, '城内农田美术');
     const mapInput = this.node2D('城内地图触控', this.cityPanel, 0, 35, 1280, 370);
-    mapInput.on(Node.EventType.TOUCH_START, (e: EventTouch) => {
-      const p = e.getUILocation();
-      this.cityDrag = { x: p.x, y: p.y, startX: p.x, startY: p.y, moved: false };
-    });
-    mapInput.on(Node.EventType.TOUCH_MOVE, (e: EventTouch) => {
-      const p = e.getUILocation();
-      if (Math.hypot(p.x - this.cityDrag.startX, p.y - this.cityDrag.startY) > 8) this.cityDrag.moved = true;
-      if (this.cityDrag.moved) {
-        const scale = this.safeUi.scale.x;
-        this.cityPan.x = Math.max(-180, Math.min(180, this.cityPan.x + (p.x - this.cityDrag.x) / scale));
-        this.cityPan.y = Math.max(-65, Math.min(65, this.cityPan.y + (p.y - this.cityDrag.y) / scale));
-      }
-      this.cityDrag.x = p.x; this.cityDrag.y = p.y;
-    });
-    mapInput.on(Node.EventType.TOUCH_END, (e: EventTouch) => {
-      e.propagationStopped = true;
-      if (this.cityDrag.moved) return;
-      const p = e.getUILocation();
-      const world = new Vec3(p.x - 640, p.y - 360, 0);
-      const local = this.cityPanel.getComponent(UITransform)!.convertToNodeSpaceAR(world);
-      const tile = unproject(local.x - this.cityPan.x, local.y - this.cityPan.y - 30);
+    this.bindMapInput(mapInput, this.cityWorld, this.cityView, p => {
+      // 图片和地块在镜头内容中有-35的布局偏移，点击还原到同一绘制坐标。
+      const local = { x: p.x, y: p.y + 35 };
+      const tile = unproject(local.x, local.y - 30);
       const hall = this.cityPoint(0, 0);
       const hitHall = Math.abs(local.x - hall.x) < 88 && local.y > hall.y - 42 && local.y < hall.y + 145;
       if (this.farmSelected) {
@@ -190,7 +187,7 @@ export class BattleView extends Component {
     this.text(this.cityPanel, '开拓领地 · 城镇建设', -425, 246, 410, 58, 34);
     this.cityTool = this.button(this.cityPanel, '视角归中', 165, 246, 260, () => {
       if (this.farmSelected) { this.farmSelected = false; this.model.message = '已取消选址，没有扣除铜币。'; }
-      else this.cityPan = { x: 0, y: 0 };
+      else { this.cityView.reset(); this.applyMapViews(); }
     });
     this.button(this.cityPanel, '返回战场', 475, 246, 280, () => { this.cityOpen = false; this.farmSelected = false; });
     const dock = this.graphics('底部建设栏', this.cityPanel);
@@ -222,7 +219,7 @@ export class BattleView extends Component {
   }
   private cityPoint(col: number, row: number): { x: number; y: number } {
     const p = project(col, row);
-    return { x: p.x + this.cityPan.x, y: p.y + this.cityPan.y + 30 };
+    return { x: p.x, y: p.y + 30 };
   }
   private cityPoly(points: { x: number; y: number }[], color: string, stroke = ''): void {
     const g = this.cityArt;
@@ -323,12 +320,48 @@ export class BattleView extends Component {
     });
     this.modal.active = false;
   }
-  private tapBattlefield(e: EventTouch): void {
+  private bindMapInput(input: Node, world: Node, camera: MapViewport, tap: (p: MapPoint) => void): void {
+    const local = (event: EventTouch | EventMouse): MapPoint => {
+      const p = event.getUILocation();
+      return input.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(p.x - 640, p.y - 360));
+    };
+    input.on(Node.EventType.TOUCH_START, (e: EventTouch) => {
+      if (this.modal?.active || this.portrait?.active) return;
+      e.propagationStopped = true;
+      camera.begin(e.getID() ?? 0, local(e));
+    });
+    input.on(Node.EventType.TOUCH_MOVE, (e: EventTouch) => {
+      e.propagationStopped = true;
+      camera.move(e.getID() ?? 0, local(e)); this.applyMapViews();
+    });
+    const end = (e: EventTouch, cancelled: boolean) => {
+      e.propagationStopped = true;
+      if (camera.end(e.getID() ?? 0, cancelled)) {
+        const p = e.getUILocation();
+        const point = world.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(p.x - 640, p.y - 360));
+        tap(point);
+      } else { this.selected = 0; this.lastTap = 0; }
+      this.applyMapViews();
+    };
+    input.on(Node.EventType.TOUCH_END, (e: EventTouch) => end(e, false));
+    input.on(Node.EventType.TOUCH_CANCEL, (e: EventTouch) => end(e, true));
+    input.on(Node.EventType.MOUSE_WHEEL, (e: EventMouse) => {
+      if (this.modal?.active || this.portrait?.active) return;
+      e.propagationStopped = true;
+      camera.zoomAt(local(e), Math.exp(Math.max(-0.25, Math.min(0.25, e.getScrollY() / 2400))));
+      this.selected = 0; this.lastTap = 0; this.applyMapViews();
+    });
+  }
+  private applyMapViews(): void {
+    for (const [node, camera] of [[this.battleWorld, this.battleView], [this.cityWorld, this.cityView]] as const) {
+      node.setPosition(camera.x, camera.y); node.setScale(camera.zoom, camera.zoom, 1);
+    }
+    this.battleReset.string = `归中 · ${Math.round(this.battleView.zoom * 100)}%`;
+    this.cityTool.string = this.farmSelected ? '取消选址' : `归中 · ${Math.round(this.cityView.zoom * 100)}%`;
+  }
+  private tapBattlefield(local: MapPoint): void {
     if (this.cityOpen || this.modal.active) return;
-    const p = e.getUILocation();
-    // 此场景相机/画布中心在世界原点；触点UI坐标以设计画布左下角为原点。
-    const local = { x: p.x - 640, y: p.y - 360 };
-    const hitRadius = Math.max(22, 22 * screen.devicePixelRatio / view.getScaleX());
+    const hitRadius = Math.max(22, 22 * screen.devicePixelRatio / view.getScaleX() / this.battleView.zoom);
     const enemy = this.model.enemies.map(u => ({ u, d: Math.hypot(u.x * 40 - local.x, u.y * 33 - local.y) })).filter(v => v.d < hitRadius).sort((a, b) => a.d - b.d)[0]?.u;
     if (!enemy) {
       this.selected = 0; this.lastTap = 0;
@@ -342,7 +375,7 @@ export class BattleView extends Component {
   }
   private drawLandscape(): void {
     const g = this.art; g.clear();
-    this.rect(g, -640, -360, 1280, 720, '#6a8050', 0);
+    this.rect(g, -2400, -1400, 4800, 2800, '#6a8050', 0);
     this.ellipse(g, -240, -20, 550, 240, '#718954'); this.ellipse(g, 350, 20, 410, 210, '#7b9059');
     this.line(g, -620, -100, 630, 95, '#9b9d6c', 63);
     this.line(g, -620, -100, 630, 95, '#aaa879', 38);
@@ -419,7 +452,7 @@ export class BattleView extends Component {
     this.upgradeLabel.string = s.cityLevel ? '主城已升级' : '升级主城 · 30铜';
     this.farmChoice.string = s.farm ? '生产 · 查看农田' : this.farmSelected ? '农田 · 选址中' : '生产 · 农田5铜';
     this.buildLabel.string = this.farmSelected ? '确认建造 · 5铜' : '城池概况';
-    this.cityTool.string = this.farmSelected ? '取消选址' : '视角归中';
+    this.applyMapViews();
     this.cityFeedback.string = s.phase === 'battle' ? `城外正在交战！耐久 ${Math.ceil(s.cityHp)}/100，可随时返回。` : this.storageFailed ? '当前无法保存，请勿依赖重开恢复。' : this.model.message;
     if (s.phase === 'defeat') this.cityFeedback.string = '城池已失守！返回战场可免费回到战前。';
     if (this.cityOpen) this.drawCity();
@@ -437,6 +470,7 @@ export class BattleView extends Component {
     this.safeUi.setScale(uiScale, uiScale, 1);
     this.safeUi.setPosition((left + right) / 2 - 640, (bottom + top) / 2 - 360);
     this.portrait.active = rotated;
+    if (rotated) { this.cityView.cancel(); this.battleView.cancel(); }
     if (this.hidden) return;
     if (!rotated) {
       this.accumulator += Math.min(dt, 0.25);

@@ -6,5 +6,5 @@
     "rootDir": "../游戏工程/assets/脚本",
     "outDir": "../.本地缓存/战斗验证"
   },
-  "files": ["../游戏工程/assets/脚本/战斗/BattleModel.ts"]
+  "files": ["../游戏工程/assets/脚本/战斗/BattleModel.ts", "../游戏工程/assets/脚本/界面/MapViewport.ts"]
 }
