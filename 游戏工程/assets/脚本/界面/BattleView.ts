@@ -2,6 +2,7 @@ import { _decorator, Component, Node, UITransform, Canvas, Camera, Color, Graphi
 import { BattleModel, RULES, guardPost } from '../战斗/BattleModel';
 import { UNIT_DATA } from '../数据/UnitData';
 import { CityCell, DEFAULT_FARM, project, unproject, farmPlacementError, isHall, isRoad, inFarm } from '../城市/CityLayout';
+import { BuildingArt, BuildingKind } from './BuildingArt';
 
 const { ccclass } = _decorator;
 const SAVE_KEY = 'frontier-prototype-save-v1';
@@ -19,6 +20,11 @@ export class BattleView extends Component {
   private roundButton!: Label;
   private cityPanel!: Node;
   private cityArt!: Graphics;
+  private buildingArt!: BuildingArt;
+  private cityHallImage!: Node;
+  private cityFarmImage!: Node;
+  private battleHallImage!: Node;
+  private artStatus!: Label;
   private battleBar!: Node;
   private battleTitle!: Node;
   private battlefield!: Node;
@@ -56,11 +62,13 @@ export class BattleView extends Component {
       }
     } catch { this.storageFailed = true; }
     this.createScene();
+    this.buildingArt = new BuildingArt(() => { if (this.isValid) this.refresh(); });
     game.on(Game.EVENT_HIDE, this.onHide, this);
     game.on(Game.EVENT_SHOW, this.onShow, this);
     this.refresh();
   }
   onDestroy(): void {
+    this.buildingArt?.dispose();
     this.persist();
     game.off(Game.EVENT_HIDE, this.onHide, this);
     game.off(Game.EVENT_SHOW, this.onShow, this);
@@ -107,6 +115,7 @@ export class BattleView extends Component {
     const canvas = this.canvas.addComponent(Canvas); canvas.cameraComponent = camera;
     this.art = this.graphics('草原与城市占位', this.canvas);
     this.drawLandscape();
+    this.battleHallImage = BuildingArt.createNode(this.canvas, '战场主城美术');
     this.units = this.graphics('战斗单位占位', this.canvas);
     this.battlefield = this.node2D('战场触控', this.canvas, 0, 0, 1200, 450);
     this.battlefield.on(Node.EventType.TOUCH_END, this.tapBattlefield, this);
@@ -116,7 +125,7 @@ export class BattleView extends Component {
     this.hud = this.text(this.safeUi, '', 0, 294, 1160, 70, 32);
     this.battleTitle = this.node2D('战场标题', this.safeUi);
     this.text(this.battleTitle, '蛮荒开拓 · 首战原型', -390, 218, 440, 40, 28, C.parchment);
-    this.text(this.battleTitle, '程序占位画面 / 非正式美术', 390, 218, 440, 40, 26, C.muted);
+    this.artStatus = this.text(this.battleTitle, '建筑美术加载中', 390, 218, 440, 40, 26, C.muted);
     this.hint = this.text(this.safeUi, '', 0, -211, 1150, 76, 29, C.white);
     this.battleBar = this.node2D('战场操作栏', this.safeUi);
     this.button(this.battleBar, '进入主城', -463, -292, 260, () => { this.cityOpen = true; });
@@ -143,6 +152,9 @@ export class BattleView extends Component {
     mapViewport.addComponent(Mask).type = Mask.Type.GRAPHICS_RECT;
     this.cityArt = this.graphics('倾斜俯视城镇', mapViewport);
     this.cityArt.node.setPosition(0, -35);
+    const buildingLayer = this.node2D('城内建筑美术', mapViewport, 0, -35);
+    this.cityHallImage = BuildingArt.createNode(buildingLayer, '城内主城美术');
+    this.cityFarmImage = BuildingArt.createNode(buildingLayer, '城内农田美术');
     const mapInput = this.node2D('城内地图触控', this.cityPanel, 0, 35, 1280, 370);
     mapInput.on(Node.EventType.TOUCH_START, (e: EventTouch) => {
       const p = e.getUILocation();
@@ -223,6 +235,7 @@ export class BattleView extends Component {
     this.cityPoly([this.cityPoint(col, row), this.cityPoint(col + 1, row), this.cityPoint(col + 1, row + 1), this.cityPoint(col, row + 1)], fill, border);
   }
   private drawCityFarm(cell: CityCell, ghost = false): void {
+    if (!ghost && this.buildingArt?.has('farm')) return;
     const g = this.cityArt;
     const corners = [this.cityPoint(cell.col, cell.row), this.cityPoint(cell.col + 2, cell.row), this.cityPoint(cell.col + 2, cell.row + 2), this.cityPoint(cell.col, cell.row + 2)];
     this.cityPoly(corners, ghost ? '#8da55d' : '#80603e', ghost ? '#d4ed9b' : '#c5ab73');
@@ -240,6 +253,11 @@ export class BattleView extends Component {
     const g = this.cityArt, s = this.model.state;
     const p = this.cityPoint(0, 0), h = s.cityLevel ? 58 : 39;
     const local = (x: number, y: number) => ({ x: p.x + x, y: p.y + y });
+    if (this.buildingArt?.has(s.cityLevel ? 'house' : 'shelter')) {
+      this.ellipse(g, p.x + 4, p.y - 4, 84, 29, '#587143');
+      if (this.citySelection === 'hall' && !this.farmSelected) this.cityPoly([local(0, -44), local(88, 0), local(0, 44), local(-88, 0)], '#ffffff00', '#eed396');
+      return;
+    }
     this.ellipse(g, p.x + 6, p.y - 24, 97, 39, '#516d42');
     this.cityPoly([local(-80, 0), local(0, -40), local(0, h - 40), local(-80, h)], '#a68a60');
     this.cityPoly([local(0, -40), local(80, 0), local(80, h), local(0, h - 40)], s.cityLevel ? '#d0ba87' : '#bda16c');
@@ -281,6 +299,15 @@ export class BattleView extends Component {
         this.cityTile(col, row, invalid ? '#b96d63' : '#a4c47b', invalid ? '#ffb6a4' : '#e0f2a5');
       }
       if (!invalid) this.drawCityFarm(this.farmCandidate, true);
+    }
+    if (this.buildingArt) {
+      const hall = this.cityPoint(0, 0);
+      this.buildingArt.show(this.cityHallImage, s.cityLevel ? 'house' : 'shelter', hall.x, hall.y, 184);
+      const farm = this.cityPoint((s.farmPlot?.col ?? 0) + 1, (s.farmPlot?.row ?? 0) + 1);
+      this.buildingArt.show(this.cityFarmImage, 'farm', farm.x, farm.y, 160, s.farm);
+      const hallOrder = farmBehind ? 1 : 0, farmOrder = farmBehind ? 0 : 1;
+      if (this.cityHallImage.getSiblingIndex() !== hallOrder) this.cityHallImage.setSiblingIndex(hallOrder);
+      if (this.cityFarmImage.getSiblingIndex() !== farmOrder) this.cityFarmImage.setSiblingIndex(farmOrder);
     }
   }
 
@@ -333,14 +360,18 @@ export class BattleView extends Component {
   }
   private drawActors(): void {
     const g = this.units; g.clear(); const s = this.model.state;
-    this.ellipse(g, 0, -24, 86, 41, '#53653e');
-    this.rect(g, -62, -22, 124, 88, s.cityLevel ? '#b8a879' : '#91774d', 3);
-    this.rect(g, -22, -22, 35, 49, '#3c392a', 2);
-    g.fillColor = new Color(s.cityLevel ? '#694f40' : '#c0a868');
-    g.moveTo(-78, 56); g.lineTo(0, 105); g.lineTo(78, 56); g.close(); g.fill();
-    this.line(g, 0, 104, 0, 139, '#594d34', 4);
-    const flutter = Math.sin(s.elapsed * 3) * 4;
-    g.fillColor = new Color(C.gold); g.moveTo(2, 139); g.lineTo(34, 130 + flutter); g.lineTo(2, 119); g.close(); g.fill();
+    const building: BuildingKind = s.cityLevel ? 'house' : 'shelter';
+    this.buildingArt?.show(this.battleHallImage, building, 0, 0, 150, !this.cityOpen);
+    if (!this.buildingArt?.has(building)) {
+      this.ellipse(g, 0, -24, 86, 41, '#53653e');
+      this.rect(g, -62, -22, 124, 88, s.cityLevel ? '#b8a879' : '#91774d', 3);
+      this.rect(g, -22, -22, 35, 49, '#3c392a', 2);
+      g.fillColor = new Color(s.cityLevel ? '#694f40' : '#c0a868');
+      g.moveTo(-78, 56); g.lineTo(0, 105); g.lineTo(78, 56); g.close(); g.fill();
+      this.line(g, 0, 104, 0, 139, '#594d34', 4);
+      const flutter = Math.sin(s.elapsed * 3) * 4;
+      g.fillColor = new Color(C.gold); g.moveTo(2, 139); g.lineTo(34, 130 + flutter); g.lineTo(2, 119); g.close(); g.fill();
+    }
     this.rect(g, -65, -42, 130, 10, C.ink, 3);
     this.rect(g, -63, -40, 126 * s.cityHp / RULES.cityHp, 6, '#a5cb72', 2);
     for (const u of [...s.units].sort((a, b) => b.y - a.y)) {
@@ -378,6 +409,7 @@ export class BattleView extends Component {
     const value = `城池 ${Math.ceil(s.cityHp)}/${RULES.cityHp}     铜币 ${s.coins}     第 ${s.round}/4 回合 · ${status}     护卫 ${this.model.guards.length}/${RULES.armyCap}`;
     if (value !== this.lastHud) { this.hud.string = value; this.lastHud = value; }
     this.hint.string = this.storageFailed ? '当前无法保存，请勿依赖重开恢复。' : this.model.message;
+    this.artStatus.string = this.buildingArt?.hasFailures ? '建筑加载失败 · 暂用占位图' : this.buildingArt?.loadedCount === 3 ? '建筑首批美术 · 角色/地形占位' : '建筑美术加载中';
     this.roundButton.string = s.phase === 'battle' ? `交战中 · 敌人${this.model.enemies.length}` : s.phase === 'defeat' ? '免费回到战前' : s.phase === 'complete' ? '前4回合已完成' : s.round === 0 ? '开始首战' : '迎敌 · 下一回合';
     this.cityPanel.active = this.cityOpen;
     this.art.node.active = !this.cityOpen; this.units.node.active = !this.cityOpen;
