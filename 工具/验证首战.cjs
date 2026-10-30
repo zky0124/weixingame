@@ -63,7 +63,7 @@ tick(m, 1 / 30); assert(m.guards.every(u => u.target === m.state.focus), '全军
 tick(m, 10); assert(m.state.coins >= 21, '交战期间农田仍产出');
 battle(m);
 while (m.state.round < 4) {
-  while (m.guards.length < 8 && m.state.coins) m.recruit();
+  while (m.guards.length < m.armyCapacity && m.state.coins) m.recruit();
   assert(m.startRound()); battle(m); assert.notEqual(m.state.phase, 'defeat');
 }
 assert.equal(m.state.phase, 'complete'); assert(!m.startRound());
@@ -81,6 +81,7 @@ slots.state.units = slots.guards.slice(1); assert(slots.recruit());
 assert.deepEqual(slots.guards.slice(0, 2).map(u => [u.id, u.post]), survivorSlots, '补员不改存活者原来的驻守位');
 assert.equal(slots.guards[2].post, 0, '新护卫补空位');
 const midReturn = new BattleModel(); midReturn.state.phase = 'victory'; midReturn.state.round = 1;
+midReturn.research.lastRound = 1;
 midReturn.guards[0].x = 9; tick(midReturn, 0.5);
 assert(midReturn.guards[0].x < 9 && midReturn.guards[0].x > guardPost(0).x, '回位应渐进移动而非瞬移');
 const restoredReturn = BattleModel.load(midReturn.save()); assert(restoredReturn);

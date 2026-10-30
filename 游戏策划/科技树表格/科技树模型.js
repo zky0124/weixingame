@@ -85,7 +85,24 @@
     if(value.nodes.some(n=>n.parent===id||n.requires.includes(id)))throw Error('还有科技依赖此点，请先调整它们的上游或前置条件。');
     const doc=clone(value);doc.nodes=doc.nodes.filter(n=>n.id!==id);return validate(doc);
   }
-  const api={validate,layout,add,update,remove,clone,colors};
+  function connect(value,from,to) {
+    const source=value.nodes.find(n=>n.id===from),target=value.nodes.find(n=>n.id===to);
+    if(!source||!target)throw Error('连线两端的科技点都必须存在。');
+    if(from===to)throw Error('不能把科技点连到自己。');
+    if(target.parent===null)throw Error('不能给中心研究塔添加前置条件。');
+    if(target.parent===from||target.requires.includes(from))return clone(value);
+    return update(value,to,{requires:[...target.requires,from],mode:'all'});
+  }
+  function disconnect(value,from,to) {
+    const target=value.nodes.find(n=>n.id===to),root=value.nodes.find(n=>n.parent===null);
+    if(!target||target.parent===null)throw Error('不能断开中心研究塔。');
+    if(target.parent===from){
+      if(from===root.id)throw Error('这是独立分支的起点，无需断开研究塔。');
+      return update(value,to,{parent:root.id,requires:target.requires.filter(id=>id!==from)});
+    }
+    return update(value,to,{requires:target.requires.filter(id=>id!==from)});
+  }
+  const api={validate,layout,add,update,remove,connect,disconnect,clone,colors};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   else global.TechTreeModel=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

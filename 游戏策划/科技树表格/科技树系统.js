@@ -3,6 +3,7 @@
   const M=window.TechTreeModel,$=id=>document.getElementById(id),form=$('editor'),map=$('map'),world=$('world');
   const KEY='frontier-tech-planner-v1',history=[],pointers=new Map();
   let doc=M.validate(window.TECH_TREE_SEED),selected=doc.nodes.find(n=>n.parent===null).id,dirty=false,zoom=1,pan={x:0,y:0},gesture=null,writing=true;
+  let linking=false,linkSource=null,projectReady=false,projectExists=false,projectConflict=false,projectRevision='none',lastProjectDoc='',saveQueue=Promise.resolve();
   const fields=['name','branch','color','level','points','coins','seconds','effect','conditions','units','buildings','existing','status','notes','mode'];
   function message(text,error=false){$('feedback').textContent=text;$('feedback').classList.toggle('error',error);}
   try{const raw=localStorage.getItem(KEY);if(raw)doc=M.validate(JSON.parse(raw));}catch{writing=false;message('本机旧草稿无法读取，未覆盖原内容。可导入导出的JSON恢复。',true);}
@@ -10,7 +11,7 @@
   selected=root().id;
   function persist(){
     if(!writing){$('storageStatus').textContent='旧草稿保留中。完成编辑后请用“保存为JSON”另存。';return;}
-    try{localStorage.setItem(KEY,JSON.stringify(doc));$('storageStatus').textContent='草稿已存当前浏览器。协作和备份请保存JSON。';}
+    try{localStorage.setItem(KEY,JSON.stringify(doc));$('storageStatus').textContent='草稿已存当前浏览器；可点“保存到项目”直接落盘。';if(projectReady&&projectExists&&!projectConflict)saveProjectDocument(M.clone(doc));}
     catch{$('storageStatus').textContent='本机存储不可用，请保存JSON，避免关闭后丢失。';}
   }
   function push(before){history.push(before??JSON.stringify(doc));if(history.length>40)history.shift();$('undo').disabled=!history.length;}
@@ -26,7 +27,15 @@
       const next=M.update(doc,selected,patch);dirty=false;commit(next);message('科技点已保存。');return true;
     }catch(error){message(error.message,true);return false;}
   }
-  function select(id){if(id===selected)return;if(!applyForm())return;selected=id;dirty=false;render();if(innerWidth<700)$('selectedTitle').scrollIntoView({behavior:'smooth',block:'start'});}
+  function select(id){
+    if(linking){
+      if(!applyForm())return;
+      if(!linkSource){linkSource=id;message('已选前置科技。现在点需要它的目标科技。');return;}
+      try{const next=M.connect(doc,linkSource,id);selected=id;commit(next);linkSource=null;linking=false;$('connect').classList.remove('gold');message('连线已保存，默认需要同时满足全部前置。');}catch(e){message(e.message,true);linkSource=null;}
+      return;
+    }
+    if(id===selected)return;if(!applyForm())return;selected=id;dirty=false;render();if(innerWidth<700)$('selectedTitle').scrollIntoView({behavior:'smooth',block:'start'});
+  }
   function renderForm(){
     const n=doc.nodes.find(n=>n.id===selected)??root();selected=n.id;
     $('selectedTitle').textContent=n.name;$('selectionMeta').textContent=n.parent===null?'中心节点 · 从这里向外创建分支':n.id+' · '+(n.status||'待填写');
@@ -41,6 +50,12 @@
     $('addBranch').disabled=$('addChild').disabled=doc.nodes.length>=240;
     form.elements.requires.disabled=n.parent===null;
     $('addChild').textContent=n.parent===null?'＋ 新建分支':'＋ 下一级';
+    const list=$('dependencyList');list.replaceChildren();
+    for(const id of n.requires){
+      const source=doc.nodes.find(x=>x.id===id),b=document.createElement('button');b.type='button';b.textContent='解除：'+source.name;b.style.margin='3px';
+      b.onclick=()=>{if(!applyForm())return;try{commit(M.disconnect(doc,id,selected));message('已解除这条跨路线连线。');}catch(e){message(e.message,true);}};list.append(b);
+    }
+    if(!n.requires.length)list.textContent='跨路线前置：暂无。点顶部“连线”，先点前置科技，再点目标科技。';
   }
   function edge(from,to,color,dashed){
     const p=document.createElementNS('http://www.w3.org/2000/svg','path');
@@ -72,8 +87,10 @@
   form.addEventListener('input',()=>{dirty=true;message('此科技点有未保存修改。');});
   form.addEventListener('change',()=>{dirty=true;});
   form.addEventListener('submit',event=>{event.preventDefault();applyForm();});
-  $('addBranch').onclick=()=>{if(!applyForm())return;const result=M.add(doc,root().id);commit(result.doc);selected=result.id;render();message('已新增分支，可拖动科技点并填写名称。');};
-  $('addChild').onclick=()=>{if(!applyForm())return;const result=M.add(doc,selected);commit(result.doc);selected=result.id;render();message('已新增下一级科技。');};
+  $('addBranch').onclick=()=>{if(!applyForm())return;const result=M.add(doc,root().id);commit(result.doc);selected=result.id;render();fit();message('已新增分支，可拖动科技点并填写名称。');};
+  $('addChild').onclick=()=>{if(!applyForm())return;const result=M.add(doc,selected);commit(result.doc);selected=result.id;render();fit();message('已新增下一级科技。');};
+  $('connect').onclick=()=>{if(!applyForm())return;linking=!linking;linkSource=null;$('connect').classList.toggle('gold',linking);message(linking?'连线模式：先点前置科技，再点需要它的目标科技。':'已退出连线模式。');};
+  window.addEventListener('keydown',e=>{if(e.key==='Escape'){linking=false;linkSource=null;$('connect').classList.remove('gold');}});
   $('remove').onclick=()=>{
     try{const n=doc.nodes.find(n=>n.id===selected),next=M.remove(doc,n.id);if(!confirm('删除“'+n.name+'”？可以用撤销恢复。'))return;dirty=false;selected=n.parent;commit(next);message('节点已删除，可撤销。');}catch(e){message(e.message,true);}
   };
@@ -112,7 +129,7 @@
   map.addEventListener('pointerup',e=>end(e));map.addEventListener('pointercancel',e=>end(e,true));
   $('export').onclick=async()=>{
     if(!applyForm())return;
-    const data=JSON.stringify({...doc,exportedAt:new Date().toISOString()},null,2),filename='科技树规划-'+new Date().toISOString().slice(0,10)+'.json';
+    const data=JSON.stringify({...doc,exportedAt:new Date().toISOString()},null,2),filename='科技树系统.json';
     try{
       if(window.showSaveFilePicker){const handle=await window.showSaveFilePicker({suggestedName:filename,types:[{description:'科技树规划',accept:{'application/json':['.json']}}]});const writer=await handle.createWritable();await writer.write(data);await writer.close();}
       else{const url=URL.createObjectURL(new Blob([data],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download=filename;a.hidden=true;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
@@ -135,5 +152,45 @@
   };
   window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue='';}});
   window.addEventListener('resize',view);
-  render();fit();persist();
+  function saveProjectDocument(snapshot){
+    saveQueue=saveQueue.catch(()=>{}).then(async()=>{
+      const text=JSON.stringify(snapshot);if(text===lastProjectDoc)return;
+      try{
+        const response=await fetch('/project-draft',{method:'POST',headers:{'Content-Type':'application/json','If-Match':projectRevision},body:JSON.stringify({document:snapshot})});const result=await response.json();
+        if(!response.ok){if(response.status===409)projectConflict=true;throw Error(result.error||'项目保存失败');}
+        projectRevision=result.revision;projectExists=true;projectConflict=false;lastProjectDoc=text;
+        $('storageStatus').textContent='已保存到项目：科技树表格 / 科技树系统.json';
+      }catch(e){message('项目存档未改动：'+e.message,true);}
+    });return saveQueue;
+  }
+  async function loadProject(manual=false){
+    if(location.protocol==='file:'){message('离线文件请用JSON另存；直接写入项目需从 http://127.0.0.1:7466 打开。');return;}
+    const before=JSON.stringify(doc);
+    try{
+      const response=await fetch('/project-draft');const result=await response.json();if(!response.ok)throw Error(result.error||'项目存档读取失败');
+      projectReady=true;projectRevision=result.revision;projectExists=result.exists;
+      if(dirty||JSON.stringify(doc)!==before){projectConflict=true;message('读取期间有新修改，保留本机草稿；请点击保存到项目。');return;}
+      if(result.exists){
+        const next=M.validate(result.document),isSeed=JSON.stringify(M.validate(window.TECH_TREE_SEED))===JSON.stringify(doc);
+        const same=JSON.stringify({...doc,projectSavedAt:null})===JSON.stringify({...next,projectSavedAt:null});
+        if(!manual&&!same&&!isSeed){projectConflict=true;message('本机草稿与项目版本不同，已保留两份。可点“载入项目”查看文件，或“保存到项目”保存本机草稿。');return;}
+        if(manual&&!same&&!confirm('载入项目文件？当前草稿仍可通过撤销恢复。'))return;
+        if(manual)push();doc=next;selected=root().id;dirty=false;projectConflict=false;lastProjectDoc=JSON.stringify(doc);persist();render();fit();message('已载入项目中的科技树系统.json。');
+      }else if(before!==JSON.stringify(M.validate(window.TECH_TREE_SEED))){
+        await saveProjectDocument(M.clone(doc));message('已将原浏览器填写的草稿保存到项目目录。');
+      }else $('storageStatus').textContent='尚未创建项目存档。填写后点击“保存到项目”。';
+    }catch(e){projectReady=false;message('项目存档暂不可用，浏览器草稿保留：'+e.message,true);}
+  }
+  $('saveProject').onclick=async()=>{
+    if(!applyForm())return;
+    if(!projectReady){await loadProject(false);if(!projectReady)return;}
+    if(projectConflict&&!confirm('将当前本机草稿保存到项目？原项目文件会先自动备份。'))return;
+    if(projectConflict){
+      try{const response=await fetch('/project-draft');const result=await response.json();if(!response.ok)throw Error(result.error||'读取版本失败');projectRevision=result.revision;lastProjectDoc='';}
+      catch(e){message('项目存档未改动：'+e.message,true);return;}
+    }
+    projectConflict=false;await saveProjectDocument(M.clone(doc));
+  };
+  $('loadProject').onclick=()=>{if(applyForm())loadProject(true);};
+  render();fit();persist();loadProject(false);
 })();

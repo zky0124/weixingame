@@ -406,7 +406,7 @@ export class BattleView extends Component {
       g.fillColor = new Color(C.gold); g.moveTo(2, 139); g.lineTo(34, 130 + flutter); g.lineTo(2, 119); g.close(); g.fill();
     }
     this.rect(g, -65, -42, 130, 10, C.ink, 3);
-    this.rect(g, -63, -40, 126 * s.cityHp / RULES.cityHp, 6, '#a5cb72', 2);
+    this.rect(g, -63, -40, 126 * s.cityHp / this.model.maxCityHp, 6, '#a5cb72', 2);
     for (const u of [...s.units].sort((a, b) => b.y - a.y)) {
       const ally = u.kind === 'guard';
       const home = ally ? guardPost(u.post!) : { x: u.x, y: u.y };
@@ -439,7 +439,7 @@ export class BattleView extends Component {
   private refresh(): void {
     const s = this.model.state;
     const status = { ready: '整备', battle: '交战', victory: '已守住', defeat: '城池失守', complete: '原型完成' }[s.phase];
-    const value = `城池 ${Math.ceil(s.cityHp)}/${RULES.cityHp}     铜币 ${s.coins}     第 ${s.round}/4 回合 · ${status}     护卫 ${this.model.guards.length}/${RULES.armyCap}`;
+    const value = `城池 ${Math.ceil(s.cityHp)}/${this.model.maxCityHp}     铜币 ${s.coins}     研究点 ${this.model.research.points}     第 ${s.round}/4 回合 · ${status}     护卫 ${this.model.guards.length}/${this.model.armyCapacity}`;
     if (value !== this.lastHud) { this.hud.string = value; this.lastHud = value; }
     this.hint.string = this.storageFailed ? '当前无法保存，请勿依赖重开恢复。' : this.model.message;
     this.artStatus.string = this.buildingArt?.hasFailures ? '建筑加载失败 · 暂用占位图' : this.buildingArt?.loadedCount === 3 ? '建筑首批美术 · 角色/地形占位' : '建筑美术加载中';
@@ -448,12 +448,12 @@ export class BattleView extends Component {
     this.art.node.active = !this.cityOpen; this.units.node.active = !this.cityOpen;
     this.battlefield.active = !this.cityOpen; this.battleTitle.active = !this.cityOpen;
     this.battleBar.active = !this.cityOpen; this.hint.node.active = !this.cityOpen;
-    this.cityInfo.string = this.farmSelected ? `农田 · 占地2×2\n位置 ${this.farmCandidate.col},${this.farmCandidate.row} · 5铜\n${farmPlacementError(this.farmCandidate) || '位置可用，等待确认'}` : this.citySelection === 'farm' && s.farm ? `农田 · 占地2×2\n每10秒＋1铜 · 下次${Math.ceil(10 - s.farmTime)}秒\n迎敌另＋1铜` : this.citySelection === 'ground' ? '空地 · 可规划建设\n选农田后点按地图选址\n拖动空白处浏览城镇' : `${s.cityLevel ? '简易房屋' : '临时庇护所'}\n耐久 ${Math.ceil(s.cityHp)}/100\n驻军 ${this.model.guards.length}/${RULES.armyCap} · 产业 ${s.farm ? 1 : 0}/1`;
+    this.cityInfo.string = this.farmSelected ? `农田 · 占地2×2\n位置 ${this.farmCandidate.col},${this.farmCandidate.row} · 5铜\n${farmPlacementError(this.farmCandidate) || '位置可用，等待确认'}` : this.citySelection === 'farm' && s.farm ? `农田 · 占地2×2\n每10秒＋1铜 · 下次${Math.ceil(10 - s.farmTime)}秒\n迎敌另＋1铜` : this.citySelection === 'ground' ? '空地 · 可规划建设\n选农田后点按地图选址\n拖动空白处浏览城镇' : `${s.cityLevel ? '简易房屋' : '临时庇护所'}\n耐久 ${Math.ceil(s.cityHp)}/${this.model.maxCityHp}\n驻军 ${this.model.guards.length}/${this.model.armyCapacity} · 产业 ${s.farm ? 1 : 0}/1`;
     this.upgradeLabel.string = s.cityLevel ? '主城已升级' : '升级主城 · 30铜';
     this.farmChoice.string = s.farm ? '生产 · 查看农田' : this.farmSelected ? '农田 · 选址中' : '生产 · 农田5铜';
     this.buildLabel.string = this.farmSelected ? '确认建造 · 5铜' : '城池概况';
     this.applyMapViews();
-    this.cityFeedback.string = s.phase === 'battle' ? `城外正在交战！耐久 ${Math.ceil(s.cityHp)}/100，可随时返回。` : this.storageFailed ? '当前无法保存，请勿依赖重开恢复。' : this.model.message;
+    this.cityFeedback.string = s.phase === 'battle' ? `城外正在交战！耐久 ${Math.ceil(s.cityHp)}/${this.model.maxCityHp}，可随时返回。` : this.storageFailed ? '当前无法保存，请勿依赖重开恢复。' : this.model.message;
     if (s.phase === 'defeat') this.cityFeedback.string = '城池已失守！返回战场可免费回到战前。';
     if (this.cityOpen) this.drawCity();
   }
@@ -475,10 +475,9 @@ export class BattleView extends Component {
     if (!rotated) {
       this.accumulator += Math.min(dt, 0.25);
       while (this.accumulator >= 1 / 30) { this.model.tick(1 / 30); this.accumulator -= 1 / 30; }
-    } else if (this.model.state.phase !== 'defeat' && this.model.state.farm) {
+    } else if (this.model.state.phase !== 'defeat') {
       // 旋转提示只暂停交战；在线产业仍累计，避免偷偷推进战斗。
-      const s = this.model.state; s.farmTime += Math.min(dt, 0.25);
-      if (s.farmTime >= 10) { s.coins += Math.floor(s.farmTime / 10); s.farmTime %= 10; }
+      this.model.tickProduction(Math.min(dt, 0.25));
     }
     this.saveClock += dt;
     if (this.saveClock >= 0.5) { this.refresh(); this.saveClock = 0; this.persist(); }

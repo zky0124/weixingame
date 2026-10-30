@@ -1,10 +1,10 @@
 {
   "project_id": "appgprj_6ae4312ad7b88191a1ad93d9c0b99234",
   "url": "https://weixingame-frontier-play.plucky-star-8284.chatgpt.site",
-  "game_version": "0.1.4",
-  "source_commit": "c1ad05482356651fc9b0cf3efc339ad9350aeeb2",
-  "saved_version_id": "appgprj_6ae4312ad7b88191a1ad93d9c0b99234~appgver_fb9f9ae72d0881918edccf6ccde52697",
-  "deployment_id": "appgdep_6ae43343428081918366fd924bf55524",
+  "game_version": "0.1.5",
+  "source_commit": "4cd1a9a2c5f47df9134e29373101e7cff91a24dd",
+  "saved_version_id": "appgprj_6ae4312ad7b88191a1ad93d9c0b99234~appgver_925c098046888191a42b92e1e797beb5",
+  "deployment_id": "appgdep_6ae44f80b3dc8191bf894a2772608845",
   "audience": "public",
   "hosting": "Sites",
   "updated": "2026-10-30"
