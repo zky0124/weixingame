@@ -20,6 +20,8 @@ jobs:
           node-version: '24'
       - name: 检查文档、单位与图鉴
         run: node 工具/检查项目资料.cjs
+      - name: 验证科技树规划与导入规则
+        run: node 工具/验证科技规划器.cjs
       - name: 验证首战数据与战斗逻辑
         run: |
           npm ci --prefix 游戏工程
