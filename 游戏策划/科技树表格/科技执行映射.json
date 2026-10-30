@@ -1,0 +1,128 @@
+{
+  "T002": {
+    "name": "法师塔",
+    "sourceEffect": "完成研究并建造法师塔后，可以招募魔法师",
+    "kind": "unlockUnit",
+    "target": "魔法师",
+    "value": 1
+  },
+  "T001": {
+    "name": "攻击强化",
+    "sourceEffect": "每一个等级所有战士单位攻击力增加1",
+    "kind": "attack",
+    "target": "战士",
+    "value": 1
+  },
+  "T003": {
+    "name": "熟练老手",
+    "sourceEffect": "解锁熟练民兵",
+    "kind": "unlockUnit",
+    "target": "熟练民兵",
+    "value": 1
+  },
+  "T004": {
+    "name": "见习法师",
+    "sourceEffect": "每一级增加所有法师单位2点攻击力",
+    "kind": "attack",
+    "target": "魔法师",
+    "value": 2
+  },
+  "T005": {
+    "name": "攻击强化",
+    "sourceEffect": "每一个等级所有弓箭手单位攻击力增加1",
+    "kind": "attack",
+    "target": "弓箭手",
+    "value": 1
+  },
+  "T006": {
+    "name": "熟练老手",
+    "sourceEffect": "解锁熟练弓箭手",
+    "kind": "unlockUnit",
+    "target": "熟练弓箭手",
+    "value": 1
+  },
+  "T007": {
+    "name": "新的增员",
+    "sourceEffect": "解锁护卫队长的招募",
+    "kind": "unlockUnit",
+    "target": "护卫队长",
+    "value": 1
+  },
+  "T008": {
+    "name": "护甲强化",
+    "sourceEffect": "每一个等级所有护卫单位护甲力增加1",
+    "kind": "armor",
+    "target": "护卫",
+    "value": 1
+  },
+  "T009": {
+    "name": "开垦",
+    "sourceEffect": "增加可建造农田数量1",
+    "kind": "farmCapacity",
+    "target": "",
+    "value": 1
+  },
+  "T010": {
+    "name": "改良种植",
+    "sourceEffect": "农田的产出减少2秒",
+    "kind": "farmPeriod",
+    "target": "",
+    "value": 2
+  },
+  "T011": {
+    "name": "改良种植+",
+    "sourceEffect": "每一级增加农田产出1铜币",
+    "kind": "farmIncome",
+    "target": "",
+    "value": 1
+  },
+  "T012": {
+    "name": "加固城防",
+    "sourceEffect": "增加城市血量50",
+    "kind": "cityHp",
+    "target": "",
+    "value": 50
+  },
+  "T013": {
+    "name": "修复工匠",
+    "sourceEffect": "每一个等级城市获得1每秒的回血",
+    "kind": "cityRegen",
+    "target": "",
+    "value": 1
+  },
+  "T014": {
+    "name": "招募学徒",
+    "sourceEffect": "缩短研究塔生产研究点10秒的时间",
+    "kind": "researchPeriod",
+    "target": "",
+    "value": 10
+  },
+  "T015": {
+    "name": "高效研究",
+    "sourceEffect": "增加研究点产出1",
+    "kind": "researchOutput",
+    "target": "",
+    "value": 1
+  },
+  "T016": {
+    "name": "研究塔升级",
+    "sourceEffect": "解锁二级研究塔",
+    "kind": "researchTier",
+    "target": "",
+    "value": 2
+  },
+  "T017": {
+    "name": "医疗救援队",
+    "sourceEffect": "每秒钟回复所有友军单位1点生命值",
+    "kind": "unitRegen",
+    "target": "",
+    "value": 1
+  },
+  "T018": {
+    "name": "高效医疗设施",
+    "sourceEffect": "每一个等级所有辅助单位治疗量增加1",
+    "kind": "healing",
+    "target": "辅助",
+    "value": 1
+  }
+}
