@@ -1,7 +1,9 @@
 import { _decorator, Component, Node, UITransform, Canvas, Camera, Color, Graphics, Label, Mask, view, screen, profiler, ResolutionPolicy, Layers, EventTouch, EventMouse, Vec3, sys, game, Game, BlockInputEvents } from 'cc';
-import { BattleModel, RULES, guardPost } from '../战斗/BattleModel';
-import { UNIT_DATA } from '../数据/UnitData';
+import { BattleModel, RULES, guardPost, PlotKind } from '../战斗/BattleModel';
+import { UNIT_DATA, unitData } from '../数据/UnitData';
 import { CityCell, DEFAULT_FARM, project, unproject, farmPlacementError, isHall, isRoad, inFarm } from '../城市/CityLayout';
+import { ENCOUNTERS, PLAYABLE_ROUNDS } from '../战斗/MonsterWaves';
+import { TOWN_NODES, FARM_LEVELS } from '../城市/TownDesign';
 import { BuildingArt, BuildingKind } from './BuildingArt';
 import { MapViewport, MapPoint } from './MapViewport';
 
@@ -24,6 +26,14 @@ export class BattleView extends Component {
   private buildingArt!: BuildingArt;
   private cityHallImage!: Node;
   private cityFarmImage!: Node;
+  private extraFarmImages: Node[] = [];
+  private catalog!: Node;
+  private roster!: Node;
+  private rosterButtons: Label[] = [];
+  private rosterFeedback!:Label;
+  private rosterSelected = 0;
+  private selectedPlot = 0;
+  private selectedBuild: PlotKind = 'farm';
   private battleHallImage!: Node;
   private artStatus!: Label;
   private battleBar!: Node;
@@ -43,7 +53,7 @@ export class BattleView extends Component {
   private farmSelected = false;
   private citySelection: 'hall' | 'farm' | 'ground' = 'hall';
   private farmCandidate: CityCell = { ...DEFAULT_FARM };
-  private cityView = new MapViewport({ x: 450, y: 200 });
+  private cityView = new MapViewport({ x: 750, y: 400 });
   private battleView = new MapViewport({ x: 600, y: 280 });
   private cityWorld!: Node;
   private battleWorld!: Node;
@@ -133,7 +143,7 @@ export class BattleView extends Component {
     this.rect(header, -616, 244, 1232, 92, C.forest);
     this.hud = this.text(this.safeUi, '', 0, 294, 1160, 70, 32);
     this.battleTitle = this.node2D('战场标题', this.safeUi);
-    this.text(this.battleTitle, '蛮荒开拓 · 首战原型', -390, 218, 440, 40, 28, C.parchment);
+    this.text(this.battleTitle, '蛮荒开拓 · 营地版本', -390, 218, 440, 40, 28, C.parchment);
     this.artStatus = this.text(this.battleTitle, '建筑美术加载中', 390, 218, 440, 40, 26, C.muted);
     const reset = this.node2D('战场视角归中', this.battleTitle, 0, 211, 210, 56);
     this.rect(reset.addComponent(Graphics), -105, -28, 210, 56, C.parchment);
@@ -142,14 +152,12 @@ export class BattleView extends Component {
     this.hint = this.text(this.safeUi, '', 0, -211, 1150, 76, 29, C.white);
     this.battleBar = this.node2D('战场操作栏', this.safeUi);
     this.button(this.battleBar, '进入主城', -463, -292, 260, () => { this.cityOpen = true; });
-    this.button(this.battleBar, '招募护卫 · 1铜', -170, -292, 290, () => {
-      if (!this.model.recruit()) this.model.message = '招募未完成：需要1铜币、空余名额，且城池尚未失守。';
-    });
+    this.button(this.battleBar, '部队 · 招募', -170, -292, 290, () => { this.rosterSelected=0; this.roster.active=true; });
     this.button(this.battleBar, '设置', 123, -292, 180, () => { this.modal.active = true; });
     this.roundButton = this.button(this.battleBar, '迎敌', 443, -292, 300, () => {
       if (this.model.state.phase === 'defeat') this.model.retry(); else this.model.startRound();
     }, true);
-    this.createCity(); this.createSettings();
+    this.createCity(); this.createCampPanels(); this.createSettings();
     this.portrait = this.node2D('请横屏', this.canvas, 0, 0, 1280, 720);
     const pg = this.portrait.addComponent(Graphics); this.rect(pg, -640, -360, 1280, 720, C.forest, 0);
     this.portrait.addComponent(BlockInputEvents);
@@ -178,10 +186,12 @@ export class BattleView extends Component {
       const hitHall = Math.abs(local.x - hall.x) < 88 && local.y > hall.y - 42 && local.y < hall.y + 145;
       if (this.farmSelected) {
         this.farmCandidate = tile;
-        this.model.message = farmPlacementError(tile) || '位置可用，点击“确认建造”后扣除5铜币。';
-      } else if (hitHall || isHall(tile.col, tile.row)) this.citySelection = 'hall';
-      else if (this.model.state.farm && inFarm(tile.col, tile.row, this.model.state.farmPlot!)) this.citySelection = 'farm';
-      else this.citySelection = 'ground';
+        this.model.message = this.model.placementError(tile) || '位置可用，点击确认建设。';
+      } else if (hitHall || isHall(tile.col, tile.row)) { this.citySelection = 'hall'; this.selectedPlot=0; }
+      else {
+        const plot=this.model.plots.find(p=>inFarm(tile.col,tile.row,p));
+        this.selectedPlot=plot?.id??0;this.citySelection=plot?'farm':'ground';
+      }
       this.refresh();
     });
     this.text(this.cityPanel, '开拓领地 · 城镇建设', -425, 246, 410, 58, 34);
@@ -193,29 +203,50 @@ export class BattleView extends Component {
     const dock = this.graphics('底部建设栏', this.cityPanel);
     this.rect(dock, -620, -260, 1240, 126, '#243b30', 12);
     this.cityInfo = this.text(this.cityPanel, '', -430, -197, 340, 114, 29);
-    this.upgradeLabel = this.button(this.cityPanel, '主城升级 · 30铜', -83, -198, 290, () => {
-      if (!this.model.upgrade()) this.model.message = '升级需首战胜利和30铜币；当前原型最高为简易房屋。';
-      this.citySelection = 'hall';
+    this.upgradeLabel = this.button(this.cityPanel, '主城升级', -83, -198, 290, () => {
+      this.model.upgrade(); this.citySelection='hall';this.selectedPlot=0;
     }, true);
-    this.farmChoice = this.button(this.cityPanel, '生产 · 农田5铜', 220, -198, 280, () => {
-      if (!this.model.state.cityLevel) this.model.message = '先升级简易房屋，解锁城内建设。';
-      else if (this.model.state.farm) {
-        this.citySelection = 'farm'; this.farmSelected = false;
-        this.model.message = '当前已建一块农田，更多产业随主城成长解锁。';
-      } else {
-        this.farmSelected = true; this.farmCandidate = { ...DEFAULT_FARM };
-        this.model.message = '点按网格预览位置，绿色可建，红色受阻；确认后才扣钱。';
-      }
-    });
+    this.farmChoice = this.button(this.cityPanel, '建造目录', 220, -198, 280, () => { this.catalog.active=true; });
     this.buildLabel = this.button(this.cityPanel, '城池概况', 500, -198, 240, () => {
-      if (!this.farmSelected) { this.citySelection = 'hall'; return; }
-      const error = farmPlacementError(this.farmCandidate);
-      if (error) this.model.message = error + '，请重新选择位置。';
-      else if (this.model.buildFarm(this.farmCandidate)) { this.farmSelected = false; this.citySelection = 'farm'; }
-      else this.model.message = '建造需5铜币、解锁土地且城池尚未失守。';
+      if(this.farmSelected){
+        if(this.model.build(this.selectedBuild,this.farmCandidate)){this.farmSelected=false;this.selectedPlot=this.model.plots[this.model.plots.length-1].id;this.citySelection='farm';}
+        return;
+      }
+      const plot=this.model.plots.find(p=>p.id===this.selectedPlot);
+      if(!plot){if(!this.model.repairCity())this.model.message=this.model.activeCombat?'交战期间不能修缮城池。':this.model.repairCost?'修缮需要'+this.model.repairCost+'铜币。':'城池耐久已满。';return;}
+      if(plot.kind==='farm'){
+        if(!this.model.upgradeFarm(plot.id))this.model.message='二级农田需要小型营地和30铜币；营地版本最高二级。';
+      }else if(!this.model.recruit(plot.kind==='militiaCamp'?'militia':'archer'))this.model.message='招募需要铜币、部队空位且城池尚未失守。可在部队界面调整驻军。';
     }, true);
     this.cityFeedback = this.text(this.cityPanel, '', 0, -278, 1200, 42, 28);
     this.cityPanel.active = false;
+  }
+  private createCampPanels():void {
+    this.catalog=this.node2D('建设目录',this.safeUi,0,0,1200,480);this.catalog.addComponent(BlockInputEvents);
+    this.rect(this.catalog.addComponent(Graphics),-600,-240,1200,480,C.forest,20);
+    this.text(this.catalog,'选择建筑 · 预览网格后确认建设',0,170,1000,70,36);
+    const choices:[PlotKind,string,number][]=[['farm','农田 · 5铜',-390],['militiaCamp','民兵营 · 25铜',0],['archerCamp','弓手营 · 25铜',390]];
+    for(const [kind,label,x]of choices)this.button(this.catalog,label,x,65,350,()=>{
+      if(this.model.state.cityLevel<(kind==='farm'?1:2)){this.model.message=kind==='farm'?'先升级简易房屋。':'先升级小型营地。';return;}
+      this.selectedBuild=kind;this.farmSelected=true;this.farmCandidate={...DEFAULT_FARM};this.catalog.active=false;
+      this.model.message='请选择空地：绿色可建，红色受阻，确认前不扣费。';
+    });
+    this.text(this.catalog,'房屋可建1块农田；营地可建3块农田与两座兵营。\n农田升至二级后，被动收入与迎敌收入同时增加。',0,-65,1080,100,28,C.parchment);
+    this.button(this.catalog,'返回建设',0,-165,360,()=>{this.catalog.active=false;});this.catalog.active=false;
+    this.roster=this.node2D('驻军名册',this.safeUi,0,0,1200,600);this.roster.addComponent(BlockInputEvents);
+    this.rect(this.roster.addComponent(Graphics),-600,-300,1200,600,C.forest,20);
+    this.text(this.roster,'驻军名册 · 整备时连续点同一士兵可确认遣散',0,250,1120,60,30);
+    for(let i=0;i<8;i++)this.rosterButtons.push(this.button(this.roster,'空位',-435+(i%4)*290,145-Math.floor(i/4)*110,270,()=>{
+      const unit=this.model.guards[i];if(!unit)return;
+      if(this.model.activeCombat){this.model.message='交战期间不能遣散驻军。';return;}
+      if(this.rosterSelected===unit.id){this.model.dismiss(unit.id);this.rosterSelected=0;}
+      else{this.rosterSelected=unit.id;this.model.message='再次点击确认遣散'+unitData(unit.kind).name+'，不退招募费。';}
+    }));
+    this.button(this.roster,'护卫 · 1铜',-380,-95,330,()=>{if(!this.model.recruit())this.model.message='招募需要铜币与空余名额。';});
+    this.button(this.roster,'民兵 · 8铜',0,-95,330,()=>{if(!this.model.recruit('militia'))this.model.message='需要民兵营、8铜币与空余名额。';});
+    this.button(this.roster,'弓箭手 · 10铜',380,-95,330,()=>{if(!this.model.recruit('archer'))this.model.message='需要弓手营、10铜币与空余名额。';});
+    this.rosterFeedback=this.text(this.roster,'阵亡不会自动补员；存活士兵保留血量。遣散确认不返还招募费。',0,-185,1100,55,25,C.parchment);
+    this.button(this.roster,'返回游戏',0,-250,360,()=>{this.roster.active=false;this.rosterSelected=0;});this.roster.active=false;
   }
   private cityPoint(col: number, row: number): { x: number; y: number } {
     const p = project(col, row);
@@ -232,7 +263,7 @@ export class BattleView extends Component {
     this.cityPoly([this.cityPoint(col, row), this.cityPoint(col + 1, row), this.cityPoint(col + 1, row + 1), this.cityPoint(col, row + 1)], fill, border);
   }
   private drawCityFarm(cell: CityCell, ghost = false): void {
-    if (!ghost && this.buildingArt?.has('farm')) return;
+
     const g = this.cityArt;
     const corners = [this.cityPoint(cell.col, cell.row), this.cityPoint(cell.col + 2, cell.row), this.cityPoint(cell.col + 2, cell.row + 2), this.cityPoint(cell.col, cell.row + 2)];
     this.cityPoly(corners, ghost ? '#8da55d' : '#80603e', ghost ? '#d4ed9b' : '#c5ab73');
@@ -250,7 +281,7 @@ export class BattleView extends Component {
     const g = this.cityArt, s = this.model.state;
     const p = this.cityPoint(0, 0), h = s.cityLevel ? 58 : 39;
     const local = (x: number, y: number) => ({ x: p.x + x, y: p.y + y });
-    if (this.buildingArt?.has(s.cityLevel ? 'house' : 'shelter')) {
+    if (s.cityLevel<2 && this.buildingArt?.has(s.cityLevel ? 'house' : 'shelter')) {
       this.ellipse(g, p.x + 4, p.y - 4, 84, 29, '#587143');
       if (this.citySelection === 'hall' && !this.farmSelected) this.cityPoly([local(0, -44), local(88, 0), local(0, 44), local(-88, 0)], '#ffffff00', '#eed396');
       return;
@@ -272,11 +303,12 @@ export class BattleView extends Component {
     const g = this.cityArt; g.clear(); const s = this.model.state;
     // 所有地物采用同一投影，地图与建筑一体；界面栏独立于地图拖动。
     const terrain = ['#7f925b', '#82965e', '#7b8e56', '#84965f'];
-    for (let col = -4; col <= 4; col++) for (let row = -4; row <= 4; row++) {
+    const radius=this.model.cityRadius;
+    for (let col = -radius; col <= radius; col++) for (let row = -radius; row <= radius; row++) {
       const color = isRoad(col, row) ? '#b1a578' : terrain[((col * 11 + row * 7) % 4 + 4) % 4];
       this.cityTile(col, row, color, this.farmSelected ? '#a7b38a' : '');
     }
-    const perimeter = [this.cityPoint(-4, -4), this.cityPoint(5, -4), this.cityPoint(5, 5), this.cityPoint(-4, 5)];
+    const perimeter = [this.cityPoint(-radius,-radius),this.cityPoint(radius+1,-radius),this.cityPoint(radius+1,radius+1),this.cityPoint(-radius,radius+1)];
     for (let i = 0; i < 4; i++) this.line(g, perimeter[i].x, perimeter[i].y, perimeter[(i + 1) % 4].x, perimeter[(i + 1) % 4].y, '#aab47a', 3);
     for (let i = 0; i < 24; i++) {
       const side = i % 4, v = -4 + Math.floor(i / 4) * 1.7;
@@ -286,27 +318,34 @@ export class BattleView extends Component {
       this.ellipse(g, p.x - 10, p.y + 30, 23, 21, '#426640');
       this.ellipse(g, p.x + 9, p.y + 44, 25, 30, '#4c7447');
     }
-    const farmBehind = s.farm && s.farmPlot!.col + s.farmPlot!.row + 2 > 0;
-    if (farmBehind) this.drawCityFarm(s.farmPlot!);
     this.drawCityHall();
-    if (s.farm && !farmBehind) this.drawCityFarm(s.farmPlot!);
-    if (this.farmSelected) {
-      const invalid = !!farmPlacementError(this.farmCandidate);
-      for (let col = this.farmCandidate.col; col < this.farmCandidate.col + 2; col++) for (let row = this.farmCandidate.row; row < this.farmCandidate.row + 2; row++) {
-        this.cityTile(col, row, invalid ? '#b96d63' : '#a4c47b', invalid ? '#ffb6a4' : '#e0f2a5');
+    const plots=[...this.model.plots].sort((a,b)=>b.col+b.row-a.col-a.row);
+    for(const plot of plots){
+      const p=this.cityPoint(plot.col+1,plot.row+1);
+      if(plot.kind==='farm')this.drawCityFarm(plot);
+      else{
+        this.cityPoly([this.cityPoint(plot.col,plot.row),this.cityPoint(plot.col+2,plot.row),this.cityPoint(plot.col+2,plot.row+2),this.cityPoint(plot.col,plot.row+2)],'#aa9671','#e0ce9f');
+        this.rect(g,p.x-34,p.y,68,40,plot.kind==='archerCamp'?'#526c83':'#926e4a',3);
+        this.cityPoly([{x:p.x-44,y:p.y+35},{x:p.x,y:p.y+75},{x:p.x+44,y:p.y+35}],plot.kind==='archerCamp'?'#466785':'#9b6146');
+        this.line(g,p.x-8,p.y+18,p.x+15,p.y+48,'#eddaa3',4);
+        if(plot.kind==='archerCamp'){g.strokeColor=new Color(C.gold);g.lineWidth=3;g.arc(p.x+8,p.y+32,16,-1.2,1.2,false);g.stroke();}
       }
-      if (!invalid) this.drawCityFarm(this.farmCandidate, true);
+      if(plot.id===this.selectedPlot)this.cityPoly([this.cityPoint(plot.col,plot.row),this.cityPoint(plot.col+2,plot.row),this.cityPoint(plot.col+2,plot.row+2),this.cityPoint(plot.col,plot.row+2)],'#ffffff00','#ffe4a2');
     }
-    if (this.buildingArt) {
-      const hall = this.cityPoint(0, 0);
-      this.buildingArt.show(this.cityHallImage, s.cityLevel ? 'house' : 'shelter', hall.x, hall.y, 184);
-      const farm = this.cityPoint((s.farmPlot?.col ?? 0) + 1, (s.farmPlot?.row ?? 0) + 1);
-      this.buildingArt.show(this.cityFarmImage, 'farm', farm.x, farm.y, 160, s.farm);
-      const hallOrder = farmBehind ? 1 : 0, farmOrder = farmBehind ? 0 : 1;
-      if (this.cityHallImage.getSiblingIndex() !== hallOrder) this.cityHallImage.setSiblingIndex(hallOrder);
-      if (this.cityFarmImage.getSiblingIndex() !== farmOrder) this.cityFarmImage.setSiblingIndex(farmOrder);
+    if(this.farmSelected){
+      const invalid=!!this.model.placementError(this.farmCandidate);
+      for(let col=this.farmCandidate.col;col<this.farmCandidate.col+2;col++)for(let row=this.farmCandidate.row;row<this.farmCandidate.row+2;row++)this.cityTile(col,row,invalid?'#b96d63':'#a4c47b',invalid?'#ffb6a4':'#e0f2a5');
+      if(!invalid&&this.selectedBuild==='farm')this.drawCityFarm(this.farmCandidate,true);
+    }
+    if(this.buildingArt){
+      const hall=this.cityPoint(0,0);this.buildingArt.show(this.cityHallImage,s.cityLevel?'house':'shelter',hall.x,hall.y,184,s.cityLevel<2);
+      const farms=plots.filter(p=>p.kind==='farm');
+      while(this.extraFarmImages.length<farms.length)this.extraFarmImages.push(BuildingArt.createNode(this.cityHallImage.parent!,'农田美术'+this.extraFarmImages.length));
+      this.cityFarmImage.active=false;
+      for(let i=0;i<this.extraFarmImages.length;i++){const p=farms[i],loc=p?this.cityPoint(p.col+1,p.row+1):{x:0,y:0};this.buildingArt.show(this.extraFarmImages[i],'farm',loc.x,loc.y,160,!!p);}
     }
   }
+
 
   private createSettings(): void {
     this.modal = this.node2D('设置与重开确认', this.safeUi, 0, 0, 1200, 480);
@@ -316,7 +355,7 @@ export class BattleView extends Component {
     this.text(this.modal, '进度自动保存在当前设备/浏览器。关闭期间不产生离线收益。\n设置打开时战斗继续，清空重开会删除本地试玩进度。', 0, 45, 1060, 150, 32);
     this.button(this.modal, '保存并返回', -270, -135, 380, () => { this.modal.active = false; });
     this.button(this.modal, '确认清空并重开', 270, -135, 420, () => {
-      this.model = new BattleModel(); this.cityOpen = false; this.modal.active = false; this.selected = 0;
+      this.catalog.active=false;this.roster.active=false;this.selectedPlot=0;this.model = new BattleModel(); this.cityOpen = false; this.modal.active = false; this.selected = 0;
     });
     this.modal.active = false;
   }
@@ -326,7 +365,7 @@ export class BattleView extends Component {
       return input.getComponent(UITransform)!.convertToNodeSpaceAR(new Vec3(p.x - 640, p.y - 360));
     };
     input.on(Node.EventType.TOUCH_START, (e: EventTouch) => {
-      if (this.modal?.active || this.portrait?.active) return;
+      if (this.modal?.active || this.portrait?.active || this.catalog?.active || this.roster?.active) return;
       e.propagationStopped = true;
       camera.begin(e.getID() ?? 0, local(e));
     });
@@ -346,7 +385,7 @@ export class BattleView extends Component {
     input.on(Node.EventType.TOUCH_END, (e: EventTouch) => end(e, false));
     input.on(Node.EventType.TOUCH_CANCEL, (e: EventTouch) => end(e, true));
     input.on(Node.EventType.MOUSE_WHEEL, (e: EventMouse) => {
-      if (this.modal?.active || this.portrait?.active) return;
+      if (this.modal?.active || this.portrait?.active || this.catalog?.active || this.roster?.active) return;
       e.propagationStopped = true;
       camera.zoomAt(local(e), Math.exp(Math.max(-0.25, Math.min(0.25, e.getScrollY() / 2400))));
       this.selected = 0; this.lastTap = 0; this.applyMapViews();
@@ -360,7 +399,7 @@ export class BattleView extends Component {
     this.cityTool.string = this.farmSelected ? '取消选址' : `归中 · ${Math.round(this.cityView.zoom * 100)}%`;
   }
   private tapBattlefield(local: MapPoint): void {
-    if (this.cityOpen || this.modal.active) return;
+    if (this.cityOpen || this.modal.active || this.roster.active) return;
     const hitRadius = Math.max(22, 22 * screen.devicePixelRatio / view.getScaleX() / this.battleView.zoom);
     const enemy = this.model.enemies.map(u => ({ u, d: Math.hypot(u.x * 40 - local.x, u.y * 33 - local.y) })).filter(v => v.d < hitRadius).sort((a, b) => a.d - b.d)[0]?.u;
     if (!enemy) {
@@ -370,7 +409,7 @@ export class BattleView extends Component {
     }
     const now = Date.now();
     if (this.selected === enemy.id && now - this.lastTap < 300) this.model.setFocus(enemy.id);
-    else this.model.message = `${UNIT_DATA.goblin.name}：血量${Math.ceil(enemy.hp)}/10，攻击1；再次点按可集火。`;
+    else this.model.message = `${unitData(enemy.kind).name}：血量${Math.ceil(enemy.hp)}/${unitData(enemy.kind).hp}，攻击${unitData(enemy.kind).attack}；再次点按可集火。`;
     this.selected = enemy.id; this.lastTap = now; this.refresh();
   }
   private drawLandscape(): void {
@@ -394,8 +433,8 @@ export class BattleView extends Component {
   private drawActors(): void {
     const g = this.units; g.clear(); const s = this.model.state;
     const building: BuildingKind = s.cityLevel ? 'house' : 'shelter';
-    this.buildingArt?.show(this.battleHallImage, building, 0, 0, 150, !this.cityOpen);
-    if (!this.buildingArt?.has(building)) {
+    this.buildingArt?.show(this.battleHallImage, building, 0, 0, 150, !this.cityOpen && s.cityLevel<2);
+    if (s.cityLevel>=2 || !this.buildingArt?.has(building)) {
       this.ellipse(g, 0, -24, 86, 41, '#53653e');
       this.rect(g, -62, -22, 124, 88, s.cityLevel ? '#b8a879' : '#91774d', 3);
       this.rect(g, -22, -22, 35, 49, '#3c392a', 2);
@@ -408,10 +447,10 @@ export class BattleView extends Component {
     this.rect(g, -65, -42, 130, 10, C.ink, 3);
     this.rect(g, -63, -40, 126 * s.cityHp / this.model.maxCityHp, 6, '#a5cb72', 2);
     for (const u of [...s.units].sort((a, b) => b.y - a.y)) {
-      const ally = u.kind === 'guard';
+      const ally = unitData(u.kind).side === 'ally';
       const home = ally ? guardPost(u.post!) : { x: u.x, y: u.y };
-      const returning = ally && s.phase !== 'battle' && Math.hypot(u.x - home.x, u.y - home.y) > 0.01;
-      const waiting = ally && s.phase !== 'battle' && !returning;
+      const returning = ally && !this.model.activeCombat && Math.hypot(u.x - home.x, u.y - home.y) > 0.01;
+      const waiting = ally && !this.model.activeCombat && !returning;
       const idle = waiting ? Math.sin(s.elapsed * 2.6 + u.id * 1.4) * 1.5 : 0;
       const stride = returning ? Math.sin(s.elapsed * 12 + u.id) * 3 : 0;
       const x = u.x * 40, ground = u.y * 33, y = ground + idle;
@@ -422,15 +461,19 @@ export class BattleView extends Component {
       }
       const bob = u.swing > 0 ? 4 : 0;
       this.line(g, x - 5, y, x - 8 + stride, ground - 7, '#352f29', 6); this.line(g, x + 4, y, x + 7 - stride, ground - 7, '#352f29', 6);
-      this.rect(g, x - 11, y - 2, 22, 24, u.flash > 0 ? '#fff0bb' : ally ? '#3b6178' : '#67543b', 5);
-      this.ellipse(g, x, y + 26, 12, 12, ally ? '#d4b48a' : '#a8bd65');
-      if (ally) {
+      this.rect(g, x - 11, y - 2, 22, 24, u.flash > 0 ? '#fff0bb' : ally ? (u.kind==='archer'?'#537d53':u.kind==='militia'?'#9b744e':'#3b6178') : unitData(u.kind).faction==='undead'?'#585464':'#67543b', 5);
+      this.ellipse(g, x, y + 26, 12, 12, ally ? '#d4b48a' : unitData(u.kind).faction==='undead'?'#d6d5c0':'#a8bd65');
+      if (ally && u.kind!=='archer') {
         this.rect(g, x - 13, y + 31, 26, 8, '#aeb7b1', 3);
         this.rect(g, x - 18, y + 1, 13, 21, '#b49658', 5);
-      } else {
+      } else if(!ally && unitData(u.kind).faction==='goblin') {
         g.fillColor = new Color('#a8bd65'); g.moveTo(x - 10, y + 28); g.lineTo(x - 22, y + 35); g.lineTo(x - 12, y + 20); g.close(); g.fill();
       }
-      this.line(g, x + 12, y + 6, x + 18 + bob, y + 29 + bob, '#d6d1ad', 4);
+      this.line(g,x+12,y+6,x+18+bob,y+(u.kind==='militia'?48:29)+bob,'#d6d1ad',4);
+      if(unitData(u.kind).range>1){g.strokeColor=new Color(C.gold);g.lineWidth=3;g.arc(x+18,y+17,15,-1.4,1.4,false);g.stroke();if(u.swing>0){const target=s.units.find(t=>t.id===u.target);if(target)this.line(g,x+20,y+20,target.x*40,target.y*33+20,unitData(u.kind).type==='magic'?'#b898ed':'#e2d3a5',2);}}
+      if(u.kind==='goblinBoss'){this.rect(g,x-12,y+33,24,10,C.gold,1);}
+      if(unitData(u.kind).job==='盾卫')this.rect(g,x-22,y,14,30,'#927e56',3);
+      if(unitData(u.kind).job==='辅助')this.line(g,x-5,y+12,x+5,y+12,'#b5e3a3',4);
       this.rect(g, x - 18, y + 45, 36, 6, C.ink, 2);
       this.rect(g, x - 17, y + 46, 34 * u.hp / UNIT_DATA[u.kind].hp, 4, ally ? '#a6d58b' : '#e69c72', 1);
       if (u.swing > 0) this.line(g, x + 15, y + 16, x + 30, y + 28, '#ffe9a4', 4);
@@ -439,19 +482,25 @@ export class BattleView extends Component {
   private refresh(): void {
     const s = this.model.state;
     const status = { ready: '整备', battle: '交战', victory: '已守住', defeat: '城池失守', complete: '原型完成' }[s.phase];
-    const value = `城池 ${Math.ceil(s.cityHp)}/${this.model.maxCityHp}     铜币 ${s.coins}     研究点 ${this.model.research.points}     第 ${s.round}/4 回合 · ${status}     护卫 ${this.model.guards.length}/${this.model.armyCapacity}`;
+    const value = `城池 ${Math.ceil(s.cityHp)}/${this.model.maxCityHp}     铜币 ${s.coins}     研究点 ${this.model.research.points}     第 ${s.round}/${PLAYABLE_ROUNDS} 回合 · ${status}     驻军 ${this.model.guards.length}/${this.model.armyCapacity}`;
     if (value !== this.lastHud) { this.hud.string = value; this.lastHud = value; }
     this.hint.string = this.storageFailed ? '当前无法保存，请勿依赖重开恢复。' : this.model.message;
-    this.artStatus.string = this.buildingArt?.hasFailures ? '建筑加载失败 · 暂用占位图' : this.buildingArt?.loadedCount === 3 ? '建筑首批美术 · 角色/地形占位' : '建筑美术加载中';
-    this.roundButton.string = s.phase === 'battle' ? `交战中 · 敌人${this.model.enemies.length}` : s.phase === 'defeat' ? '免费回到战前' : s.phase === 'complete' ? '前4回合已完成' : s.round === 0 ? '开始首战' : '迎敌 · 下一回合';
+    this.artStatus.string = this.buildingArt?.hasFailures ? '建筑加载失败 · 暂用占位图' : this.buildingArt?.loadedCount === 3 ? '角色/兵营/营地均为占位' : '建筑美术加载中';
+    this.roundButton.string = s.phase === 'battle' ? `交战中 · 敌人${this.model.enemies.length}` : s.phase === 'defeat' ? '免费回到战前' : s.phase === 'complete' ? '营地路线已完成' : s.round === 0 ? '开始首战' : '迎敌 · 下一回合';
     this.cityPanel.active = this.cityOpen;
     this.art.node.active = !this.cityOpen; this.units.node.active = !this.cityOpen;
     this.battlefield.active = !this.cityOpen; this.battleTitle.active = !this.cityOpen;
     this.battleBar.active = !this.cityOpen; this.hint.node.active = !this.cityOpen;
-    this.cityInfo.string = this.farmSelected ? `农田 · 占地2×2\n位置 ${this.farmCandidate.col},${this.farmCandidate.row} · 5铜\n${farmPlacementError(this.farmCandidate) || '位置可用，等待确认'}` : this.citySelection === 'farm' && s.farm ? `农田 · 占地2×2\n每10秒＋1铜 · 下次${Math.ceil(10 - s.farmTime)}秒\n迎敌另＋1铜` : this.citySelection === 'ground' ? '空地 · 可规划建设\n选农田后点按地图选址\n拖动空白处浏览城镇' : `${s.cityLevel ? '简易房屋' : '临时庇护所'}\n耐久 ${Math.ceil(s.cityHp)}/${this.model.maxCityHp}\n驻军 ${this.model.guards.length}/${this.model.armyCapacity} · 产业 ${s.farm ? 1 : 0}/1`;
-    this.upgradeLabel.string = s.cityLevel ? '主城已升级' : '升级主城 · 30铜';
-    this.farmChoice.string = s.farm ? '生产 · 查看农田' : this.farmSelected ? '农田 · 选址中' : '生产 · 农田5铜';
-    this.buildLabel.string = this.farmSelected ? '确认建造 · 5铜' : '城池概况';
+    const plot=this.model.plots.find(p=>p.id===this.selectedPlot);
+    const names={farm:'农田',militiaCamp:'民兵营',archerCamp:'弓手营'};
+    const income=plot?.kind==='farm'?FARM_LEVELS[plot.level-1]:null;
+    this.cityInfo.string=this.farmSelected?`${names[this.selectedBuild]} · 占地2×2\n位置 ${this.farmCandidate.col},${this.farmCandidate.row}\n${this.model.placementError(this.farmCandidate)||'可建，等待确认'}`:plot?`${names[plot.kind]} · ${plot.level}级\n${income?`每10秒＋${income.passive}铜，迎敌另＋${income.round}铜`:plot.kind==='militiaCamp'?'招募民兵 · 8铜':'招募弓箭手 · 10铜'}\n位置 ${plot.col},${plot.row}`:`${this.model.townName}\n耐久 ${Math.ceil(s.cityHp)}/${this.model.maxCityHp} · 驻军 ${this.model.guards.length}/${this.model.armyCapacity}\n农田 ${this.model.plots.filter(p=>p.kind==='farm').length}/${this.model.farmCapacity}`;
+    this.upgradeLabel.string=s.cityLevel>=2?'小型营地已建成':s.cityLevel===0?'升级房屋 · 30铜':'升级营地 · 180铜';
+    this.farmChoice.string='建造目录';
+    this.buildLabel.string=this.farmSelected?`确认建设 · ${this.selectedBuild==='farm'?5:25}铜`:plot?.kind==='farm'?(plot.level>=2?'农田已达二级':'农田升级 · 30铜'):plot?(plot.kind==='militiaCamp'?'招募民兵 · 8铜':'招募弓手 · 10铜'):`修缮城池 · ${this.model.repairCost}铜`;
+    this.rosterFeedback.string=this.model.message;
+    for(let i=0;i<this.rosterButtons.length;i++){const u=this.model.guards[i];this.rosterButtons[i].string=u?`${this.rosterSelected===u.id?'确认遣散：':''}${unitData(u.kind).name}\n血量 ${Math.ceil(u.hp)}/${unitData(u.kind).hp}`:i>=this.model.armyCapacity?'驻军位尚未开放':'空余驻军位';}
+
     this.applyMapViews();
     this.cityFeedback.string = s.phase === 'battle' ? `城外正在交战！耐久 ${Math.ceil(s.cityHp)}/${this.model.maxCityHp}，可随时返回。` : this.storageFailed ? '当前无法保存，请勿依赖重开恢复。' : this.model.message;
     if (s.phase === 'defeat') this.cityFeedback.string = '城池已失守！返回战场可免费回到战前。';
