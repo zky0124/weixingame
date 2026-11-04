@@ -16,7 +16,7 @@ export function validResearchState(value: ResearchState): boolean {
     Array.isArray(value.wildWaves) && value.wildWaves.length <= 50000 && value.wildWaves.every(id => typeof id === 'string' && id.length > 0 && id.length <= 128) &&
     new Set(value.wildWaves).size === value.wildWaves.length && typeof value.settlementSupportPaid === 'boolean';
 }
-export function researchYield(state: ResearchState, base: number): number { return base + state.outputBonus; }
+export function researchYield(state: ResearchState, base: number): number { return state.towerBuilt ? base + state.outputBonus : 0; }
 export function researchPeriod(state: ResearchState): number { return Math.max(1, RESEARCH_RULES.seconds - (state.periodReduction ?? 0)); }
 export function tickResearch(state: ResearchState, dt: number): number {
   if (!state.towerBuilt || !Number.isFinite(dt) || dt <= 0) return 0;
@@ -38,7 +38,7 @@ export function researchWildWave(state: ResearchState, waveId: string): number {
   const amount = researchYield(state, RESEARCH_RULES.wildWave); state.points += amount; return amount;
 }
 export function researchSettlementSupport(state: ResearchState): number {
-  if (state.settlementSupportPaid) return 0;
+  if (!state.towerBuilt || state.settlementSupportPaid) return 0;
   state.settlementSupportPaid = true;
   const amount = researchYield(state, RESEARCH_RULES.settlementSupport); state.points += amount; return amount;
 }

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "confirmed": "2026-10-30",
+  "confirmed": "2026-11-04",
   "source": "游戏策划/城镇与建筑表格/城镇升级与建筑填写表.xlsx",
   "sourceSha256": "921df5c065fa9c89e67a0290304447cd29aebd195b6863145511f046d25dfb0e",
   "towns": [
@@ -132,21 +132,17 @@
     {
       "id": "B006",
       "name": "医院",
-      "unlockTown": "C003",
-      "cost": null,
-      "width": null,
-      "height": null,
+      "unlockTown": "C002",
+      "cost": 15,
+      "width": 2,
+      "height": 2,
       "maxCount": 1,
       "maxLevel": 10,
       "upgradeable": true,
       "phase1": true,
       "requiredTechnology": null,
-      "purpose": "建成后可招募医疗队；其他医疗作用待填",
-      "pendingFields": [
-        "cost",
-        "width",
-        "height"
-      ]
+      "purpose": "战后花铜币治疗存活部队，不复活、不被动回血；医疗队推迟至定居点后招募",
+      "pendingFields": []
     },
     {
       "id": "B007",
@@ -191,7 +187,7 @@
       "cost": 0,
       "width": null,
       "height": null,
-      "maxCount": null,
+      "maxCount": 1,
       "maxLevel": null,
       "upgradeable": null,
       "phase1": true,
@@ -209,7 +205,7 @@
       "cost": null,
       "width": null,
       "height": null,
-      "maxCount": null,
+      "maxCount": 1,
       "maxLevel": null,
       "upgradeable": null,
       "phase1": false,
@@ -228,7 +224,7 @@
       "cost": null,
       "width": null,
       "height": null,
-      "maxCount": null,
+      "maxCount": 1,
       "maxLevel": null,
       "upgradeable": null,
       "phase1": false,
@@ -247,7 +243,7 @@
       "cost": null,
       "width": null,
       "height": null,
-      "maxCount": null,
+      "maxCount": 1,
       "maxLevel": null,
       "upgradeable": null,
       "phase1": false,
@@ -266,7 +262,7 @@
       "cost": null,
       "width": null,
       "height": null,
-      "maxCount": null,
+      "maxCount": 1,
       "maxLevel": null,
       "upgradeable": null,
       "phase1": false,
@@ -330,6 +326,16 @@
       "adopt": 4,
       "sourceCell": "建筑作用!J6",
       "supersedes": "城镇升级!K9的旧模板5块"
+    },
+    {
+      "field": "2026-11-04医院提前与建筑数量",
+      "adopt": "用户同意考虑医院提前，助手工作初值：房屋解锁、15铜建造、每20缺血1铜全队合并取整；除农田外默认1座；医疗队定居点后",
+      "supersedes": "医院营地解锁、仅用于招医疗队的旧配置；原Excel保留历史填写"
+    },
+    {
+      "field": "2026-11-04研究点前置",
+      "adopt": "所有研究点产出均须研究塔建成；此前主线/野怪只登记事件，不补发；20点支援延后到研究塔首次建成",
+      "supersedes": "建塔前预存回合/野怪研究点"
     }
   ],
   "futureTownNames": [
@@ -345,5 +351,9 @@
     "区域首府",
     "王国首都",
     "帝国"
-  ]
+  ],
+  "hospital": {
+    "hpPerCopper": 20,
+    "medicUnlockTown": "C004"
+  }
 }

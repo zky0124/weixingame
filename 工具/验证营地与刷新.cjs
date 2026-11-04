@@ -13,7 +13,7 @@ const wild=ready();tick(wild,59.9);assert.equal(wild.enemies.length,0);tick(wild
 const wildIds=wild.enemies.map(u=>u.id),wildPoints=wild.research.points,restored=BattleModel.load(wild.save());assert(restored,'野怪交战可恢复');
 assert(wild.startRound());assert(wildIds.every(id=>wild.enemies.some(u=>u.id===id)));
 const serial=wild.wild.serial;tick(wild,.1);assert.equal(wild.wild.serial,serial,'主线期间不新增野怪');
-assert(BattleModel.load(wild.save()));battle(wild);assert.equal(wild.state.phase,'victory');assert.equal(wild.research.points,wildPoints+6,'回合5点与野怪整波1点分别结算');assert.equal(wild.wild.active,0);
+assert(BattleModel.load(wild.save()));battle(wild);assert.equal(wild.state.phase,'victory');assert.equal(wild.research.points,wildPoints,'未建研究塔，回合和野怪都不产点');assert.equal(wild.wild.active,0);
 const points=wild.research.points;tick(wild,10);assert.equal(wild.research.points,points,'波次奖励不重复');
 const alone=ready();tick(alone,60);alone.state.cityHp=0;alone.tick(1/30);assert.equal(alone.state.phase,'defeat');assert(alone.retry());assert.equal(alone.wild.timer,0);assert.equal(alone.enemies.length,0,'独立野怪失败回到生成前并留出重新整备时间');
 // 建筑位置、数量、升级与每块田独立收入。
@@ -25,9 +25,9 @@ assert(city.recruit('archer'));assert(city.recruit('militia'));assert(city.repai
 // 连续16回合：不加资源、不等挂机、不靠广告；按实际费用招募/建造/修缮，首领战调整编队。
 const m=new BattleModel();
 for(let round=1;round<=16;round++){
- if(round===2){assert(m.upgrade());assert(m.buildFarm());}
- if(round===9){assert(m.state.coins>=230,'主线资金足以支付营地和两兵营');assert(m.upgrade());assert(m.build('militiaCamp',{col:-4,row:-4}));assert(m.build('archerCamp',{col:-4,row:2}));}
- if(round>1){m.repairCity();for(const u of [...m.guards])if(u.hp<unitData(u.kind).hp*.25)assert(m.dismiss(u.id));}
+ if(round===2){assert(m.upgrade());assert(m.buildFarm());assert(m.build('hospital',{col:-4,row:-4}));}
+ if(round===9){assert(m.state.coins>=230,'主线资金足以支付营地和两兵营');assert(m.upgrade());assert(m.build('militiaCamp',{col:-4,row:2}));assert(m.build('archerCamp',{col:2,row:-4}));}
+ if(round>1){m.repairCity();if(m.treatmentCost())assert(m.treat(),'可以用正常收入治疗残血，不靠解散重招');}
  while(m.guards.length<m.armyCapacity&&m.state.coins){const count=k=>m.guards.filter(u=>u.kind===k).length,kind=m.state.cityLevel===2?(count('archer')<3?'archer':count('militia')<3?'militia':'guard'):'guard';if(!m.recruit(kind)&&!m.recruit())break;}
  if(round===16){for(const u of [...m.guards])assert(m.dismiss(u.id));for(let i=0;i<6;i++)assert(m.recruit('archer'));for(let i=0;i<2;i++)assert(m.recruit('militia'));}
  assert(m.startRound());if(round>4)assert(m.state.pending.length>0,'较大波次分批入场');battle(m);assert.notEqual(m.state.phase,'defeat','第'+round+'回合');assert.equal(m.completed,round);assert(BattleModel.load(m.save()),'每回合存档可恢复');

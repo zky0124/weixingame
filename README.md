@@ -1,7 +1,7 @@
 # weixingame
 元昱航科技团队协作仓库
 
-**[点击在线试玩](https://weixingame-frontier-play.plucky-star-8284.chatgpt.site)** · 当前v0.2.0，无需登录，拿到链接即可玩。[访问与更新说明](协作开发/在线试玩说明.md)
+**[点击在线试玩](https://weixingame-frontier-play.plucky-star-8284.chatgpt.site)** · 当前v0.2.1，无需登录，拿到链接即可玩。[访问与更新说明](协作开发/在线试玩说明.md)
 
 本仓库保存2D俯视角开拓守城小游戏的策划、单位资料及Cocos Creator 3.8.8游戏工程。已实现前16回合营地程序版本与首批建筑图片，角色、地形和多数界面仍为可替换的程序占位表现。
 
