@@ -1,13 +1,13 @@
 {
   "name": "frontier-prototype",
   "uuid": "373ffd9e-aec5-4a61-b0a0-b5b97d33e73f",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "creator": {
     "version": "3.8.8"
   },
   "private": true,
   "scripts": {
-    "test": "node ../工具/同步科技设定.cjs --check && node ../工具/同步城镇设定.cjs --check && node ../工具/同步首战单位.cjs --check && node ../工具/检查建筑图片.cjs && tsc -p ../工具/tsconfig.首战.json && node ../工具/验证首战.cjs ../.本地缓存/战斗验证 && node ../工具/验证地图手势.cjs ../.本地缓存/战斗验证 && node ../工具/验证研究点.cjs ../.本地缓存/战斗验证 && node ../工具/验证科技效果.cjs ../.本地缓存/战斗验证",
+    "test": "node ../工具/同步科技设定.cjs --check && node ../工具/同步城镇设定.cjs --check && node ../工具/同步首战单位.cjs --check && node ../工具/检查建筑图片.cjs && tsc -p ../工具/tsconfig.首战.json && node ../工具/验证首战.cjs ../.本地缓存/战斗验证 && node ../工具/验证地图手势.cjs ../.本地缓存/战斗验证 && node ../工具/验证研究点.cjs ../.本地缓存/战斗验证 && node ../工具/验证科技效果.cjs ../.本地缓存/战斗验证 && node ../工具/验证营地与刷新.cjs ../.本地缓存/战斗验证",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

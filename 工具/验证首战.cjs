@@ -51,7 +51,7 @@ assert.deepEqual(town.state.farmPlot, customPlot);
 const townRestored = BattleModel.load(town.save()); assert(townRestored);
 assert.deepEqual(townRestored.state.farmPlot, customPlot, '建成位置应保存恢复');
 assert(!townRestored.buildFarm(DEFAULT_FARM)); assert.equal(townRestored.state.coins, 5);
-const oldTown = town.save(); delete oldTown.state.farmPlot;
+const oldTown = town.save(); delete oldTown.state.farmPlot; delete oldTown.state.plots;
 const oldTownRestored = BattleModel.load(oldTown); assert(oldTownRestored);
 assert.deepEqual(oldTownRestored.state.farmPlot, DEFAULT_FARM); assert.equal(oldTownRestored.state.coins, 5);
 const badTown = town.save(); badTown.state.farmPlot = { col: 0, row: 0 };
@@ -66,7 +66,7 @@ while (m.state.round < 4) {
   while (m.guards.length < m.armyCapacity && m.state.coins) m.recruit();
   assert(m.startRound()); battle(m); assert.notEqual(m.state.phase, 'defeat');
 }
-assert.equal(m.state.phase, 'complete'); assert(!m.startRound());
+assert.equal(m.state.phase, 'victory'); assert(BattleModel.load(m.save()).startRound(),'旧前4回合终点可继续推进营地路线');
 tick(m, 15);
 assert(m.guards.every(u => Math.hypot(u.x - guardPost(u.post).x, u.y - guardPost(u.post).y) < 1e-6), '最后一波结束也继续回位');
 const legacy = m.save();

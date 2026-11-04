@@ -1,239 +1,262 @@
-import { UNIT_DATA } from '../数据/UnitData';
+import { UNIT_DATA, UnitKind, unitData } from '../数据/UnitData';
 import { CityCell, DEFAULT_FARM, farmPlacementError } from '../城市/CityLayout';
 import { FARM_LEVELS, TOWN_NODES } from '../城市/TownDesign';
 import { RESEARCH_RULES, ResearchState, newResearchState, validResearchState, tickResearch, researchRound, researchWildWave, researchPeriod } from '../城市/ResearchEconomy';
 import { TechnologyLevels, validTechnologyLevels, purchaseTechnology, technologyModifiers } from '../城市/TechnologySystem';
-
-export type Kind = 'guard' | 'goblin';
-export type Phase = 'ready' | 'battle' | 'victory' | 'defeat' | 'complete';
-export interface Unit {
-  id: number; kind: Kind; x: number; y: number; hp: number; cooldown: number;
-  flash: number; swing: number; target: number;
-  /** 固定驻守槽位；旧存档由加载时补齐，敌人不使用此字段。 */
-  post?: number;
-}
+import { ENCOUNTERS, PLAYABLE_ROUNDS, WILD_RULES, wildRoster } from './MonsterWaves';
+export type Kind=UnitKind;
+export type Phase='ready'|'battle'|'victory'|'defeat'|'complete';
+export interface Unit { id:number; kind:Kind; x:number; y:number; hp:number; cooldown:number; flash:number; swing:number; target:number; post?:number; wave?:number; main?:boolean; protectedBy?:number; entered?:Record<string,number> }
+export type PlotKind='farm'|'militiaCamp'|'archerCamp';
+export interface CityPlot extends CityCell { id:number; kind:PlotKind; level:number; timer:number }
+interface WildState { timer:number; serial:number; active:number; first:boolean }
+interface PendingSpawn { kind:Kind; delay:number; slot:number }
 export interface Snapshot {
-  version: 1; phase: Phase; round: number; coins: number; cityLevel: number;
-  cityHp: number; farm: boolean; farmTime: number; kingPaid: boolean;
-  units: Unit[]; nextId: number; focus: number; elapsed: number;
-  farmPlot?: CityCell;
-  research?: ResearchState;
-  technologies?: TechnologyLevels;
-  buildings?: string[];
-  farmLevel?: number;
+ version:1; phase:Phase; round:number; coins:number; cityLevel:number; cityHp:number; farm:boolean; farmTime:number; kingPaid:boolean;
+ units:Unit[]; nextId:number; focus:number; elapsed:number; farmPlot?:CityCell; research?:ResearchState; technologies?:TechnologyLevels;
+ buildings?:string[]; farmLevel?:number; plots?:CityPlot[]; completed?:number; wild?:WildState; pending?:PendingSpawn[]; goblinBossDefeated?:boolean;
 }
-export interface SaveData { state: Snapshot; checkpoint: Snapshot | null }
-export const RULES = { cityHp: 100, upgradeCost: 30, farmCost: 5, recruitCost: 1, armyCap: 8, farmSeconds: 10, totalRounds: 4, cityRadius: 1.5 } as const;
-const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
-export function damage(attack: number, defense: number): number { return Math.max(0, attack - defense); }
-export function guardPost(post: number): { x: number; y: number } {
-  const angle = post * 2.399;
-  return { x: Math.cos(angle) * 2.7, y: Math.sin(angle) * 2.7 };
-}
-
-/** 与渲染、平台和存储无关；游戏和自动验证共用此战斗逻辑。 */
+export interface SaveData { state:Snapshot; checkpoint:Snapshot|null }
+export const RULES={cityHp:100,upgradeCost:30,farmCost:5,recruitCost:1,armyCap:8,farmSeconds:10,totalRounds:PLAYABLE_ROUNDS,cityRadius:1.5} as const;
+const clone=<T>(v:T):T=>JSON.parse(JSON.stringify(v));
+export function damage(attack:number,defense:number):number {return Math.max(0,attack-defense);}
+export function guardPost(post:number):{x:number;y:number} {const angle=post*2.399;return {x:Math.cos(angle)*2.7,y:Math.sin(angle)*2.7};}
+const allied=(u:Unit)=>unitData(u.kind).side==='ally';
+const distance=(a:{x:number;y:number},b:{x:number;y:number})=>Math.hypot(a.x-b.x,a.y-b.y);
 export class BattleModel {
-  state: Snapshot;
-  checkpoint: Snapshot | null = null;
-  message = '国王派你来到蛮荒平原。三名护卫已就位，准备迎敌。';
-  constructor() {
-    this.state = { version: 1, phase: 'ready', round: 0, coins: 0, cityLevel: 0, cityHp: RULES.cityHp, farm: false, farmTime: 0, kingPaid: false, units: [], nextId: 1, focus: 0, elapsed: 0, research: newResearchState() };
-    for (let i = 0; i < 3; i++) this.addGuard();
+ state:Snapshot;checkpoint:Snapshot|null=null;message='国王派你来到蛮荒平原。三名护卫已就位，准备迎敌。';
+ constructor(){this.state={version:1,phase:'ready',round:0,coins:0,cityLevel:0,cityHp:100,farm:false,farmTime:0,kingPaid:false,units:[],nextId:1,focus:0,elapsed:0,research:newResearchState(),completed:0,plots:[],wild:{timer:0,serial:0,active:0,first:true},pending:[]};for(let i=0;i<3;i++)this.addAlly('guard');}
+ // guards为旧接口名，表示全部驻军，保证名额、回位与旧存档兼容。
+ get guards():Unit[]{return this.state.units.filter(u=>allied(u)&&u.hp>0);}
+ get enemies():Unit[]{return this.state.units.filter(u=>!allied(u)&&u.hp>0);}
+ get completed():number{return this.state.completed??(['victory','complete'].includes(this.state.phase)?this.state.round:Math.max(0,this.state.round-1));}
+ get wild():WildState{return this.state.wild??={timer:0,serial:0,active:0,first:true};}
+ get plots():CityPlot[]{
+  const s=this.state;
+  if(!s.plots)s.plots=s.farm?[{id:1,kind:'farm',...(s.farmPlot??DEFAULT_FARM),level:s.farmLevel??1,timer:s.farmTime}]:[];
+  // 兼容旧调用方只写入farm的情况。
+  if(s.farm&&!s.plots.some(p=>p.kind==='farm'))s.plots.push({id:Math.max(0,...s.plots.map(p=>p.id))+1,kind:'farm',...(s.farmPlot??DEFAULT_FARM),level:s.farmLevel??1,timer:s.farmTime});
+  return s.plots;
+ }
+ get townName():string{return TOWN_NODES[this.state.cityLevel].name;}
+ get cityRadius():number{return this.state.cityLevel>=2?6:4;}
+ get armyCapacity():number{return TOWN_NODES[this.state.cityLevel].capacity;}
+ get maxCityHp():number{return TOWN_NODES[this.state.cityLevel].hp+this.modifiers.cityHp;}
+ get modifiers(){return technologyModifiers(this.state.technologies??{});}
+ get farmCapacity():number{return TOWN_NODES[this.state.cityLevel].farms+this.modifiers.farmCapacity;}
+ get research():ResearchState{return this.state.research??=newResearchState(this.state.round);}
+ get activeCombat():boolean{return this.enemies.length>0||this.state.phase==='battle';}
+ rewardWildWave(waveId:string):number{return this.state.phase==='defeat'?0:researchWildWave(this.research,waveId);}
+ researchTechnology(id:string):string{
+  if(this.state.phase==='defeat')return '城池已失守';
+  const a=this.research,period=researchPeriod(a),wallet={points:a.points,coins:this.state.coins};const levels=this.state.technologies??={};
+  const error=purchaseTechnology(levels,id,wallet,{hasTower:a.towerBuilt,town:this.state.cityLevel,farmLevel:Math.max(0,...this.plots.filter(p=>p.kind==='farm').map(p=>p.level)),buildings:this.state.buildings??[]});if(error)return error;
+  a.points=wallet.points;this.state.coins=wallet.coins;a.outputBonus=this.modifiers.researchOutput;a.periodReduction=Math.min(29,this.modifiers.researchPeriod);a.timer=a.timer/period*researchPeriod(a);return '';
+ }
+ private addAlly(kind:Kind):void{
+  const occupied=new Set(this.guards.map(u=>u.post));let post=0;while(occupied.has(post))post++;
+  this.state.units.push({id:this.state.nextId++,kind,...guardPost(post),post,hp:unitData(kind).hp,cooldown:0,flash:0,swing:0,target:0});
+ }
+ recruit(kind:Kind='guard'):boolean{
+  const data=unitData(kind),s=this.state;
+  if(!['guard','militia','archer'].includes(kind)||data.cost===null||s.phase==='defeat'||s.coins<data.cost||this.guards.length>=this.armyCapacity)return false;
+  const building=kind==='militia'?'militiaCamp':kind==='archer'?'archerCamp':null;
+  if(building&&!this.plots.some(p=>p.kind===building))return false;
+  s.coins-=data.cost;this.addAlly(kind);this.message=data.name+'加入驻军。';return true;
+ }
+ dismiss(id:number):boolean{if(this.activeCombat||this.state.phase==='defeat')return false;const unit=this.guards.find(u=>u.id===id);if(!unit)return false;this.state.units=this.state.units.filter(u=>u.id!==id);this.message='已遣散'+unitData(unit.kind).name+'，不返还招募费。';return true;}
+ get repairCost():number{return Math.ceil((this.maxCityHp-this.state.cityHp)/5);}
+ repairCity():boolean{const cost=this.repairCost;if(this.activeCombat||this.state.phase==='defeat'||cost<=0||this.state.coins<cost)return false;this.state.coins-=cost;this.state.cityHp=this.maxCityHp;this.message='工匠已修缮城池，花费'+cost+'铜币；士兵不会因此回血。';return true;}
+ upgradeError():string{
+  const s=this.state;if(s.phase==='defeat')return '城池已失守';if(s.cityLevel>=2)return '营地版本最高为小型营地';const next=TOWN_NODES[s.cityLevel+1];
+  if(this.completed<next.minRound)return '先完成第'+next.minRound+'回合';if(s.coins<next.cost)return '升级需要'+next.cost+'铜币';return '';
+ }
+ upgrade():boolean{const error=this.upgradeError();if(error){this.message=error;return false;}this.state.coins-=TOWN_NODES[this.state.cityLevel+1].cost;this.state.cityLevel++;this.message=this.townName+'建成！'+(this.state.cityLevel===2?'开放三块农田、民兵营和弓手营。':'解锁第一块农田。');return true;}
+ placementError(plot:CityCell):string{return farmPlacementError(plot,this.cityRadius,this.plots);}
+ build(kind:PlotKind,cell:CityCell):boolean{
+  const s=this.state,cost=kind==='farm'?5:25;
+  if(s.phase==='defeat'||s.cityLevel<(kind==='farm'?1:2)||s.coins<cost){this.message='建设未完成：主城等级或铜币不足。';return false;}
+  if(kind==='farm'?this.plots.filter(p=>p.kind==='farm').length>=this.farmCapacity:this.plots.some(p=>p.kind===kind)){this.message='已达到该建筑数量上限。';return false;}
+  const error=this.placementError(cell);if(error){this.message=error;return false;}
+  const id=Math.max(0,...this.plots.map(p=>p.id))+1;this.plots.push({...cell,id,kind,level:1,timer:0});s.coins-=cost;
+  this.syncLegacyFarm();s.buildings=[...(s.buildings??[]).filter(id=>id!=='B003'&&id!=='B004'),...this.plots.filter(p=>p.kind!=='farm').map(p=>p.kind==='archerCamp'?'B003':'B004')];
+  this.message=kind==='farm'?'农田开始生产：在线每10秒＋1铜币，迎敌另＋1铜币。':'兵营建成，点击该建筑可花钱招募对应士兵。';return true;
+ }
+ buildFarm(cell:CityCell=DEFAULT_FARM):boolean{return this.build('farm',cell);}
+ upgradeFarm(id:number):boolean{
+  const p=this.plots.find(p=>p.id===id&&p.kind==='farm');if(!p||p.level>=2||this.state.cityLevel<2||this.state.phase==='defeat')return false;
+  const next=FARM_LEVELS[p.level];if(this.state.coins<next.cost)return false;this.state.coins-=next.cost;p.level++;this.syncLegacyFarm();this.message='农田升至'+p.level+'级，每次在线产出与迎敌产出均为'+next.passive+'铜。';return true;
+ }
+ private syncLegacyFarm():void{const p=this.plots.find(p=>p.kind==='farm');this.state.farm=!!p;if(p){this.state.farmPlot={col:p.col,row:p.row};this.state.farmTime=p.timer;this.state.farmLevel=p.level;}}
+ startRound():boolean{
+  const s=this.state;if(!['ready','victory','complete'].includes(s.phase)||this.completed>=PLAYABLE_ROUNDS)return false;
+  const encounter=ENCOUNTERS[this.completed];
+  if(s.cityLevel<encounter.city){this.message='先升级'+TOWN_NODES[encounter.city].name+'，再推进主线。';return false;}
+  if(this.completed===1&&!s.farm){this.message='先升级房屋并修建农田，再继续迎敌。';return false;}
+  if(this.completed>=8&&!this.plots.some(p=>p.kind!=='farm')){this.message='先建民兵营或弓手营，为混编作战做好准备。';return false;}
+  this.checkpoint=clone(s);s.round=this.completed+1;s.phase='battle';s.focus=0;researchRound(this.research,s.round);
+  for(const p of this.plots.filter(p=>p.kind==='farm'))s.coins+=FARM_LEVELS[p.level-1].round+this.modifiers.farmIncome;
+  s.pending=[];let slot=0;
+  for(const [kind,count] of encounter.groups)for(let i=0;i<count;i++){if(s.round<=4)this.spawnEnemy(kind,slot++,true);else s.pending.push({kind,slot:slot++,delay:(slot-1)*0.65});}
+  this.message='第'+s.round+'回合：'+encounter.title+'。主线期间暂停新增野怪，在场野怪不会消失。';return true;
+ }
+ private spawnEnemy(kind:Kind,slot:number,main:boolean,wave=0):void{
+  const side=slot%2===0?1:-1;
+  this.state.units.push({id:this.state.nextId++,kind,x:side*(10.5+(slot%3)*.6),y:-3.7+((slot*2.7+this.state.round)%7.4),hp:unitData(kind).hp,cooldown:.5,flash:0,swing:0,target:0,main,wave});
+ }
+ setFocus(id:number):boolean{if(!this.enemies.some(u=>u.id===id))return false;this.state.focus=id;this.message='已标记全军优先目标。';return true;}
+ retry():boolean{if(this.state.phase!=='defeat'||!this.checkpoint)return false;this.state=clone(this.checkpoint);this.checkpoint=null;if(this.state.phase!=='battle'&&!this.wild.active)this.wild.timer=0;this.message='回到战前：本次掉落、收入、建设和损失一并还原。';return true;}
+ private tickSpawns(dt:number):void{
+  const s=this.state;
+  if(s.phase==='battle'){
+   for(const p of s.pending??[])p.delay=Math.max(0,p.delay-dt);
+   while(s.pending?.length&&s.pending[0].delay<=0&&this.enemies.length<WILD_RULES.maxEnemies){const p=s.pending.shift()!;this.spawnEnemy(p.kind,p.slot,true);}return;
   }
-  get guards(): Unit[] { return this.state.units.filter(u => u.kind === 'guard' && u.hp > 0); }
-  get enemies(): Unit[] { return this.state.units.filter(u => u.kind === 'goblin' && u.hp > 0); }
-  get armyCapacity(): number { return TOWN_NODES[this.state.cityLevel].capacity; }
-  get maxCityHp(): number { return TOWN_NODES[this.state.cityLevel].hp + this.modifiers.cityHp; }
-  get modifiers() { return technologyModifiers(this.state.technologies ?? {}); }
-  get farmCapacity(): number { return TOWN_NODES[this.state.cityLevel].farms + this.modifiers.farmCapacity; }
-  get research(): ResearchState { return this.state.research ??= newResearchState(this.state.round); }
-  /** 供野怪波次管理器在整波清场时调用；不能按每次击杀调用。 */
-  rewardWildWave(waveId: string): number { return this.state.phase === 'defeat' ? 0 : researchWildWave(this.research, waveId); }
-  researchTechnology(id: string): string {
-    if (this.state.phase === 'defeat') return '城池已失守';
-    const account=this.research,oldPeriod=researchPeriod(account),wallet={points:account.points,coins:this.state.coins};
-    const levels=this.state.technologies ??= {};
-    const error=purchaseTechnology(levels,id,wallet,{hasTower:account.towerBuilt,town:this.state.cityLevel,farmLevel:this.state.farm?(this.state.farmLevel??1):0,buildings:this.state.buildings??[]});
-    if(error)return error;
-    account.points=wallet.points;this.state.coins=wallet.coins;const mods=this.modifiers;
-    account.outputBonus=mods.researchOutput;account.periodReduction=Math.min(29,mods.researchPeriod);
-    account.timer=account.timer/oldPeriod*researchPeriod(account);return '';
+  if(this.completed<WILD_RULES.unlockAfter||this.wild.active||s.phase==='complete')return;
+  this.wild.timer+=dt;const interval=this.wild.first?WILD_RULES.firstInterval:WILD_RULES.interval;
+  if(this.wild.timer+1e-8<interval)return;
+  this.wild.timer=Math.min(this.wild.timer,interval);this.checkpoint=clone(s);this.wild.timer=0;this.wild.first=false;this.wild.active=++this.wild.serial;
+  const roster=wildRoster(this.completed,this.wild.serial-1);roster.forEach((kind,i)=>this.spawnEnemy(kind,i,false,this.wild.active));
+  this.message=(this.completed>=16?'亡灵':'哥布林')+'野怪来袭！可继续建设，也可迎接主线。';
+ }
+ private defense(unit:Unit,type:string):number{
+  const d=unitData(unit.kind);let value=type==='magic'?d.resistance:d.armor;
+  if(allied(unit)&&type!=='magic')value+=this.modifiers.armor[d.job]??0;
+  if(!allied(unit)&&type!=='magic'&&d.race==='哥布林'&&this.enemies.some(u=>u.kind==='goblinBoss'&&u.id!==unit.id&&distance(u,unit)<=4))value++;
+  return value;
+ }
+ private chooseTarget(unit:Unit,living:Unit[]):Unit|undefined{
+  const d=unitData(unit.kind),opponents=living.filter(u=>allied(u)!==allied(unit));
+  const sort=(a:Unit,b:Unit)=>distance(unit,a)-distance(unit,b)||a.id-b.id;
+  const ward=d.job==='护卫'?living.filter(u=>allied(u)===allied(unit)&&unitData(u.kind).range>1).sort((a,b)=>Number(unitData(a.kind).attack<=0)-Number(unitData(b.kind).attack<=0)||sort(a,b))[0]:undefined;
+  if(d.job==='护卫')unit.protectedBy=ward?.id;
+  if(allied(unit)){const focus=opponents.find(u=>u.id===this.state.focus);if(focus)return focus;}
+  if(d.job==='刺客')return opponents.sort((a,b)=>{
+   const rank=(u:Unit)=>unitData(u.kind).job==='辅助'?0:unitData(u.kind).range>1?1:2;return rank(a)-rank(b)||(rank(a)===2?this.defense(a,'physical')-this.defense(b,'physical'):0)||sort(a,b);
+  })[0];
+  if(d.job==='护卫'){
+   if(ward){const assassin=opponents.filter(u=>unitData(u.kind).job==='刺客'&&distance(u,ward)<=3).sort(sort)[0];if(assassin)return assassin;}
   }
-  private addGuard(): void {
-    const occupied = new Set(this.guards.map(u => u.post));
-    let post = 0;
-    while (occupied.has(post)) post++;
-    const home = guardPost(post);
-    this.state.units.push({ id: this.state.nextId++, kind: 'guard', ...home, post, hp: UNIT_DATA.guard.hp, cooldown: 0, flash: 0, swing: 0, target: 0 });
+  if(d.job==='魔法师'){const heavy=opponents.filter(u=>unitData(u.kind).heavy&&distance(unit,u)<=d.range).sort(sort)[0];if(heavy)return heavy;}
+  if(d.job==='弓箭手'){
+   const inside=opponents.filter(u=>distance(unit,u)<=d.range);unit.entered??={};
+   for(const u of inside)if(unit.entered[u.id]===undefined)unit.entered[u.id]=this.state.elapsed;
+   const ids=new Set(inside.map(u=>String(u.id)));for(const key of Object.keys(unit.entered))if(!ids.has(key))delete unit.entered[key];
+   const target=inside.sort((a,b)=>unit.entered![a.id]-unit.entered![b.id]||sort(a,b))[0];if(target)return target;
   }
-  recruit(): boolean {
-    if (this.state.phase === 'defeat' || this.state.coins < RULES.recruitCost || this.guards.length >= this.armyCapacity) return false;
-    this.state.coins -= RULES.recruitCost;
-    this.addGuard(); this.message = '新护卫加入！护卫可直接花1铜币招募。'; return true;
+  return opponents.sort(sort)[0];
+ }
+ private receive(victim:Unit,amount:number):void{
+  if(amount<=0||victim.hp<=0)return;
+  if(unitData(victim.kind).range>1){
+   const guard=this.state.units.filter(u=>u.hp>0&&allied(u)===allied(victim)&&unitData(u.kind).job==='护卫'&&u.protectedBy===victim.id&&distance(u,victim)<=3).sort((a,b)=>distance(a,victim)-distance(b,victim)||a.id-b.id)[0];
+   if(guard){const share=amount*.3;guard.hp=Math.max(0,guard.hp-share);guard.flash=.15;amount-=share;}
   }
-  upgrade(): boolean {
-    if (this.state.cityLevel !== 0 || !this.state.kingPaid || this.state.coins < RULES.upgradeCost || this.state.phase === 'defeat') return false;
-    this.state.coins -= RULES.upgradeCost; this.state.cityLevel = 1;
-    this.message = '简易房屋建成，解锁第一块农田。'; return true;
-  }
-  buildFarm(plot: CityCell = DEFAULT_FARM): boolean {
-    if (!this.state.cityLevel || this.state.farm || this.state.coins < RULES.farmCost || this.state.phase === 'defeat') return false;
-    if (farmPlacementError(plot)) return false;
-    this.state.coins -= RULES.farmCost; this.state.farm = true; this.state.farmTime = 0;
-    this.state.farmPlot = { ...plot };
-    this.message = '农田开始生产：在线每10秒＋1铜币，每次迎敌另＋1铜币。'; return true;
-  }
-  startRound(): boolean {
-    const s = this.state;
-    if (!['ready', 'victory'].includes(s.phase) || s.round >= RULES.totalRounds) return false;
-    if (s.round === 1 && (!s.cityLevel || !s.farm)) { this.message = '先进入主城，升级房屋并修建农田，再继续迎敌。'; return false; }
-    this.checkpoint = clone(s);
-    s.round++; s.phase = 'battle'; s.focus = 0;
-    researchRound(this.research, s.round);
-    if (s.farm) s.coins+=FARM_LEVELS[(s.farmLevel??1)-1].round+this.modifiers.farmIncome;
-    for (let i = 0; i < s.round + 2; i++) {
-      const side = i % 2 === 0 ? 1 : -1;
-      s.units.push({ id: s.nextId++, kind: 'goblin', x: side * (10.5 + (i % 3) * 0.6), y: -3.7 + ((i * 2.7 + s.round) % 7.4), hp: UNIT_DATA.goblin.hp, cooldown: 0.5, flash: 0, swing: 0, target: 0 });
+  victim.hp=Math.max(0,victim.hp-amount);victim.flash=.15;
+ }
+ tick(dt:number):void{
+  if(!Number.isFinite(dt)||dt<=0||this.state.phase==='defeat')return;const s=this.state;s.elapsed+=dt;this.tickProduction(dt);this.tickSpawns(dt);
+  if(s.cityHp>0)s.cityHp=Math.min(this.maxCityHp,s.cityHp+this.modifiers.cityRegen*dt);
+  for(const u of this.guards)if(this.modifiers.unitRegen)u.hp=Math.min(unitData(u.kind).hp,u.hp+this.modifiers.unitRegen*dt);
+  const living=s.units.filter(u=>u.hp>0),strikes:{from:Unit;to:Unit|null;amount:number;heal?:boolean}[]=[];
+  for(const u of living){
+   const d=unitData(u.kind);u.cooldown=Math.max(0,u.cooldown-dt);u.flash=Math.max(0,u.flash-dt);u.swing=Math.max(0,u.swing-dt);
+   if(!this.activeCombat){u.target=0;const home=guardPost(u.post!),dist=distance(u,home),step=d.speed*dt;if(dist<=step){u.x=home.x;u.y=home.y;}else{u.x+=(home.x-u.x)/dist*step;u.y+=(home.y-u.y)/dist*step;}continue;}
+   if(d.job==='辅助'){
+    const friends=living.filter(v=>v.id!==u.id&&allied(v)===allied(u)&&v.hp<unitData(v.kind).hp&&distance(u,v)<=d.range&&(u.kind!=='healerGoblin'||unitData(v.kind).race!=='机械'));
+    friends.sort((a,b)=>Number(unitData(a.kind).range>1)-Number(unitData(b.kind).range>1)||(unitData(b.kind).hp-b.hp)-(unitData(a.kind).hp-a.hp)||a.id-b.id);
+    if(d.heal>0&&friends[0]&&u.cooldown<=0){strikes.push({from:u,to:friends[0],amount:d.heal+(allied(u)?this.modifiers.healing[d.job]??0:0),heal:true});u.cooldown=1/d.rate;u.swing=.18;}
+    const escort=living.filter(v=>allied(v)===allied(u)&&v.id!==u.id).sort((a,b)=>Number(unitData(a.kind).range<=1)-Number(unitData(b.kind).range<=1)||distance(a,u)-distance(b,u))[0];
+    if(escort&&distance(u,escort)>2){const dist=distance(u,escort),move=Math.min(d.speed*dt,dist-2);u.x+=(escort.x-u.x)/dist*move;u.y+=(escort.y-u.y)/dist*move;}continue;
+   }
+   const target=this.chooseTarget(u,living);let tx=target?.x??0,ty=target?.y??0,dist=target?distance(u,target):Infinity,targetId=target?.id??0,range=d.range;
+   if(d.job==='护卫'&&(!allied(u)||!s.focus)&&u.protectedBy){
+    const ward=living.find(v=>v.id===u.protectedBy);
+    if(ward&&(!target||distance(target,ward)>3)){
+     const gap=distance(u,ward);if(gap>1.8){const move=Math.min(d.speed*dt,gap-1.8);u.x+=(ward.x-u.x)/gap*move;u.y+=(ward.y-u.y)/gap*move;}u.target=0;continue;
     }
-    this.message = `第${s.round}回合：哥布林从平原两侧袭来！双击敌人可全军集火。`;
-    return true;
+   }
+   if(!allied(u)&&u.kind!=='headlessKnight'){
+    const cityDist=Math.hypot(u.x,u.y);if(d.job==='攻城'||cityDist-RULES.cityRadius<dist){tx=0;ty=0;dist=cityDist;range+=RULES.cityRadius;targetId=-1;}
+   }
+   if(!targetId)continue;u.target=targetId;
+   if(dist>range){const move=Math.min(d.speed*dt,dist-range+.001);u.x+=(tx-u.x)/dist*move;u.y+=(ty-u.y)/dist*move;}
+   else if(u.cooldown<=0){
+    let attack=d.attack+(allied(u)?this.modifiers.attack[d.job]??0:0);
+    if(target&&d.job==='护卫'&&unitData(target.kind).job==='刺客')attack*=1.3;
+    if(targetId===-1&&d.job==='攻城')attack*=1.5;
+    strikes.push({from:u,to:targetId===-1?null:target!,amount:damage(attack,targetId===-1?0:this.defense(target!,d.type))});u.cooldown=1/d.rate;u.swing=.18;
+   }
   }
-  setFocus(id: number): boolean {
-    if (!this.enemies.some(u => u.id === id)) return false;
-    this.state.focus = id; this.message = '已下达集火命令，护卫优先追击标记目标。'; return true;
+  for(let i=0;i<living.length;i++)for(let j=i+1;j<living.length;j++){
+   const a=living[i],b=living[j];if(allied(a)!==allied(b))continue;const dx=b.x-a.x,dy=b.y-a.y,len=Math.hypot(dx,dy);if(len>.001&&len<.6){const push=Math.min((.6-len)/2,dt*.7);a.x-=dx/len*push;a.y-=dy/len*push;b.x+=dx/len*push;b.y+=dy/len*push;}
   }
-  retry(): boolean {
-    if (this.state.phase !== 'defeat' || !this.checkpoint) return false;
-    this.state = clone(this.checkpoint); this.checkpoint = null;
-    this.message = '已回到战前，整次尝试的掉落、消耗和建设一并回滚。可补员再迎敌。'; return true;
+  for(const hit of strikes){if(!hit.to)s.cityHp=Math.max(0,s.cityHp-hit.amount);else if(hit.heal){if(hit.to.hp>0)hit.to.hp=Math.min(unitData(hit.to.kind).hp,hit.to.hp+hit.amount);}else this.receive(hit.to,hit.amount);}
+  for(const u of s.units)if(u.hp<=0&&!allied(u))s.coins+=unitData(u.kind).drop;
+  s.units=s.units.filter(u=>u.hp>0);if(!this.enemies.some(u=>u.id===s.focus))s.focus=0;
+  // 先判负，避免城破同帧最后敌人死亡时同时领取胜利奖励。
+  if(s.cityHp<=0){s.phase='defeat';this.message='城池被攻破，可回到战前重新部署。';return;}
+  if(this.wild.active&&!this.enemies.some(u=>u.wave===this.wild.active)){
+   this.rewardWildWave('wild:'+this.wild.active);this.wild.active=0;this.wild.timer=0;this.message='野怪整波已击退，获得研究点；驻军正在归位。';
   }
-  tick(dt: number): void {
-    if (!Number.isFinite(dt) || dt <= 0) return;
-    const s = this.state;
-    if (s.phase === 'defeat') return;
-    s.elapsed += dt;
-    this.tickProduction(dt);
-    const regeneration=this.modifiers;
-    if(s.cityHp>0)s.cityHp=Math.min(this.maxCityHp,s.cityHp+regeneration.cityRegen*dt);
-    if(regeneration.unitRegen)for(const unit of this.guards)unit.hp=Math.min(UNIT_DATA.guard.hp,unit.hp+regeneration.unitRegen*dt);
-    // 清场只结束交战，世界时钟不停止；存活士兵走回自己的固定驻守点。
-    if (s.phase !== 'battle') {
-      for (const unit of this.guards) {
-        unit.target = 0; unit.flash = Math.max(0, unit.flash - dt); unit.swing = Math.max(0, unit.swing - dt);
-        unit.cooldown = Math.max(0, unit.cooldown - dt);
-        const home = guardPost(unit.post!);
-        const dx = home.x - unit.x, dy = home.y - unit.y, distance = Math.hypot(dx, dy);
-        const step = UNIT_DATA.guard.speed * dt;
-        if (distance <= step) { unit.x = home.x; unit.y = home.y; }
-        else { unit.x += dx / distance * step; unit.y += dy / distance * step; }
-      }
-      return;
-    }
-    const strikes: { from: number; to: number; amount: number }[] = [];
-    const living = s.units.filter(u => u.hp > 0);
-    for (const unit of living) {
-      unit.cooldown = Math.max(0, unit.cooldown - dt); unit.flash = Math.max(0, unit.flash - dt); unit.swing = Math.max(0, unit.swing - dt);
-      const data = UNIT_DATA[unit.kind];
-      const opponents = living.filter(u => u.kind !== unit.kind);
-      let target = unit.kind === 'guard' ? opponents.find(u => u.id === s.focus) : undefined;
-      if (!target) target = opponents.sort((a, b) => Math.hypot(a.x - unit.x, a.y - unit.y) - Math.hypot(b.x - unit.x, b.y - unit.y) || a.id - b.id)[0];
-      let tx = target?.x ?? 0, ty = target?.y ?? 0, distance = target ? Math.hypot(tx - unit.x, ty - unit.y) : Infinity;
-      let targetId = target?.id ?? 0;
-      let range: number = data.range;
-      if (unit.kind === 'goblin') {
-        const cityDistance = Math.hypot(unit.x, unit.y);
-        if (cityDistance - RULES.cityRadius < distance) { tx = 0; ty = 0; distance = cityDistance; range += RULES.cityRadius; targetId = -1; }
-      }
-      if (targetId === 0) continue;
-      unit.target = targetId;
-      if (distance > range) {
-        const move = Math.min(data.speed * dt, distance - range + 0.001);
-        unit.x += (tx - unit.x) / distance * move; unit.y += (ty - unit.y) / distance * move;
-      } else if (unit.cooldown <= 0) {
-        const defense = targetId === -1 ? 0 : UNIT_DATA[target!.kind].armor+(target!.kind==='guard'?(regeneration.armor['护卫']??0):0);
-        strikes.push({ from: unit.id, to: targetId, amount: damage(data.attack, defense) });
-        unit.cooldown = 1 / data.rate; unit.swing = 0.18;
-      }
-    }
-    // 友方单位轻微分离，保持身体可辨认；不改射程和数值。
-    for (let i = 0; i < living.length; i++) for (let j = i + 1; j < living.length; j++) {
-      const a = living[i], b = living[j];
-      if (a.kind !== b.kind) continue;
-      const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
-      if (len > 0.001 && len < 0.6) {
-        const push = Math.min((0.6 - len) / 2, dt * 0.7);
-        a.x -= dx / len * push; a.y -= dy / len * push; b.x += dx / len * push; b.y += dy / len * push;
-      }
-    }
-    for (const hit of strikes) {
-      if (hit.to === -1) s.cityHp = Math.max(0, s.cityHp - hit.amount);
-      else {
-        const victim = s.units.find(u => u.id === hit.to)!;
-        if (victim.hp <= 0) continue;
-        victim.hp = Math.max(0, victim.hp - hit.amount); victim.flash = 0.15;
-        if (victim.hp === 0 && victim.kind === 'goblin') s.coins++;
-      }
-    }
-    s.units = s.units.filter(u => u.hp > 0);
-    if (!this.enemies.some(u => u.id === s.focus)) s.focus = 0;
-    if (s.cityHp === 0) { s.phase = 'defeat'; this.message = '庇护所被攻破。可免费回到战前检查点，再调整部队。'; }
-    else if (!this.enemies.length) {
-      s.phase = s.round === RULES.totalRounds ? 'complete' : 'victory';
-      s.focus = 0;
-      for (const unit of this.guards) { unit.target = 0; unit.swing = 0; }
-      if (!s.kingPaid) { s.kingPaid = true; s.coins += 50; this.message = '首战告捷！击杀获得3铜币，国王另送50铜币。进入主城升级。'; }
-      else this.message = s.phase === 'complete' ? '前4回合验证完成！这只是玩法原型，后续将继续建设营地与定居点。' : '守住了！可自由建设和补员，准备好后再迎敌。';
-    }
+  if(s.phase==='battle'&&!this.enemies.length&&!s.pending?.length){
+   s.completed=s.round;s.phase=s.round>=PLAYABLE_ROUNDS?'complete':'victory';s.focus=0;
+   for(const u of this.guards){u.target=0;u.swing=0;}
+   if(!s.kingPaid){s.kingPaid=true;s.coins+=50;this.message='首战告捷！击杀3铜币，国王另送50铜币。进入主城升级。';}
+   else{s.coins+=ENCOUNTERS[s.round-1].reward;this.message='守住第'+s.round+'回合，主线赏金＋'+ENCOUNTERS[s.round-1].reward+'铜币。';}
+   if(s.round===16){s.goblinBossDefeated=true;this.message='哥布林头领倒下，白骨大军正在平原集结。营地版本完成，亡灵主线将在下一里程碑开放。';}
   }
-  tickProduction(dt: number): void {
-    if (!Number.isFinite(dt) || dt <= 0 || this.state.phase === 'defeat') return;
-    const s = this.state;
-    if (s.farm) {
-      s.farmTime += dt;
-      const base=FARM_LEVELS[(s.farmLevel??1)-1],mods=this.modifiers,period=Math.max(1,base.seconds-mods.farmPeriod);
-      const count = Math.floor((s.farmTime + 1e-8) / period);
-      if (count) { s.coins += count*(base.passive+mods.farmIncome); s.farmTime = Math.max(0, s.farmTime - count * period); }
-    }
-    tickResearch(this.research, dt);
+ }
+ tickProduction(dt:number):void{
+  if(!Number.isFinite(dt)||dt<=0||this.state.phase==='defeat')return;const mods=this.modifiers;
+  // 老接口中的首田计时仍接受旧调用方更新，存档迁移不重复补产。
+  const first=this.plots.find(p=>p.kind==='farm');if(first){first.timer=this.state.farmTime;first.level=this.state.farmLevel??first.level;}
+  for(const p of this.plots.filter(p=>p.kind==='farm')){const base=FARM_LEVELS[p.level-1],period=Math.max(1,base.seconds-mods.farmPeriod);p.timer+=dt;const n=Math.floor((p.timer+1e-8)/period);if(n){this.state.coins+=n*(base.passive+mods.farmIncome);p.timer=Math.max(0,p.timer-n*period);}}
+  this.syncLegacyFarm();tickResearch(this.research,dt);
+ }
+ save():SaveData{return {state:clone(this.state),checkpoint:clone(this.checkpoint)};}
+ static load(raw:unknown):BattleModel|null{
+  if(!raw||typeof raw!=='object')return null;const data=clone(raw) as SaveData;
+  const valid=(s:Snapshot):boolean=>{
+   if(!s||s.version!==1||!['ready','battle','victory','defeat','complete'].includes(s.phase))return false;
+   if(!Number.isInteger(s.round)||s.round<0||s.round>PLAYABLE_ROUNDS||!Number.isInteger(s.coins)||s.coins<0||s.coins>1e12)return false;
+   if(![0,1,2].includes(s.cityLevel)||typeof s.farm!=='boolean'||typeof s.kingPaid!=='boolean')return false;
+   if(s.technologies!==undefined&&!validTechnologyLevels(s.technologies))return false;
+   if(s.farmLevel!==undefined&&(!Number.isInteger(s.farmLevel)||s.farmLevel<1||s.farmLevel>3))return false;
+   if(s.buildings!==undefined&&(!Array.isArray(s.buildings)||s.buildings.length>30||s.buildings.some(id=>typeof id!=='string')))return false;
+   if(!Number.isFinite(s.cityHp)||s.cityHp<0||s.cityHp>TOWN_NODES[s.cityLevel].hp+technologyModifiers(s.technologies??{}).cityHp)return false;
+   if(s.research!==undefined&&(!validResearchState(s.research)||s.research.lastRound!==s.round))return false;
+   if(s.farmPlot!==undefined&&(!s.farm||farmPlacementError(s.farmPlot,s.cityLevel>=2?6:4)))return false;
+   if(!Number.isFinite(s.farmTime)||s.farmTime<0||s.farmTime>=10||!Number.isFinite(s.elapsed)||s.elapsed<0)return false;
+   if(!Number.isSafeInteger(s.nextId)||s.nextId<1||!Number.isInteger(s.focus))return false;
+   if(!Array.isArray(s.units)||s.units.length>64||s.units.some(u=>!u||!(u.kind in UNIT_DATA))||new Set(s.units.map(u=>u.id)).size!==s.units.length)return false;
+   const posts=s.units.filter(u=>allied(u)&&u.post!==undefined).map(u=>u.post);if(posts.some(p=>!Number.isInteger(p)||p!<0||p!>=8)||new Set(posts).size!==posts.length||s.units.filter(allied).length>8)return false;
+   if(!s.units.every(u=>Number.isSafeInteger(u.id)&&u.id>0&&u.id<s.nextId&&Number.isFinite(u.x)&&Math.abs(u.x)<30&&Number.isFinite(u.y)&&Math.abs(u.y)<20&&Number.isFinite(u.hp)&&u.hp>0&&u.hp<=unitData(u.kind).hp&&[u.cooldown,u.flash,u.swing].every(v=>Number.isFinite(v)&&v>=0)&&Number.isInteger(u.target)))return false;
+   if(s.completed!==undefined&&(!Number.isInteger(s.completed)||s.completed<0||s.completed>s.round))return false;
+   if(s.wild!==undefined&&(!Number.isFinite(s.wild.timer)||s.wild.timer<0||s.wild.timer>60||!Number.isSafeInteger(s.wild.serial)||s.wild.serial<0||!Number.isSafeInteger(s.wild.active)||s.wild.active<0||s.wild.active>s.wild.serial||typeof s.wild.first!=='boolean'))return false;
+   if(s.pending!==undefined&&(!Array.isArray(s.pending)||s.pending.length>40||s.pending.some(p=>!p||!(p.kind in UNIT_DATA)||unitData(p.kind).side!=='enemy'||!Number.isFinite(p.delay)||p.delay<0||!Number.isInteger(p.slot)||p.slot<0||p.slot>40)))return false;
+   if(s.plots!==undefined){
+    if(!Array.isArray(s.plots)||s.plots.length>6||new Set(s.plots.map(p=>p?.id)).size!==s.plots.length)return false;
+    const checked:CityCell[]=[];for(const p of s.plots){if(!p||!Number.isInteger(p.id)||p.id<1||!['farm','militiaCamp','archerCamp'].includes(p.kind)||!Number.isInteger(p.level)||p.level<1||p.level>3||!Number.isFinite(p.timer)||p.timer<0||p.timer>=10||farmPlacementError(p,s.cityLevel>=2?6:4,checked))return false;checked.push(p);}
+    const first=s.plots.find(p=>p.kind==='farm');if(!!first!==s.farm)return false;
+    if(first&&s.farmPlot&&(first.col!==s.farmPlot.col||first.row!==s.farmPlot.row))return false;
+   }
+   return true;
+  };
+  if(!valid(data.state)||(data.checkpoint!==null&&(!valid(data.checkpoint)||!['ready','victory','complete'].includes(data.checkpoint.phase))))return null;
+  if(['battle','defeat'].includes(data.state.phase)&&!data.checkpoint)return null;
+  const m=new BattleModel();m.state=data.state;m.checkpoint=data.checkpoint;
+  for(const s of [m.state,m.checkpoint]){
+   if(!s)continue;
+   s.completed??=['victory','complete'].includes(s.phase)?s.round:Math.max(0,s.round-1);
+   if(s.phase==='complete'&&s.round<PLAYABLE_ROUNDS)s.phase='victory';
+   if(!s.research){s.research=newResearchState(s.round);s.research.points=s.round*RESEARCH_RULES.round;}
+   if(s.farm&&!s.farmPlot){const p=s.plots?.find(p=>p.kind==='farm');s.farmPlot=p?{col:p.col,row:p.row}:{...DEFAULT_FARM};}
+   // v0.1.x的farmPlot是首田位置；以它修复首田镜像，不重扣建设费。
+   if(s.plots&&s.farm){const first=s.plots.find(p=>p.kind==='farm');if(first){first.col=s.farmPlot!.col;first.row=s.farmPlot!.row;}}
+   const occupied=new Set(s.units.filter(u=>allied(u)&&u.post!==undefined).map(u=>u.post));for(const u of s.units.filter(u=>allied(u)&&u.post===undefined)){let post=0;while(occupied.has(post))post++;u.post=post;occupied.add(post);}
+   s.wild??={timer:0,serial:0,active:0,first:true};s.pending??=[];
   }
-  save(): SaveData { return { state: clone(this.state), checkpoint: clone(this.checkpoint) }; }
-  static load(raw: unknown): BattleModel | null {
-    if (!raw || typeof raw !== 'object') return null;
-    const data = raw as SaveData;
-    const valid = (s: Snapshot): boolean => {
-      if (!s || s.version !== 1 || !['ready', 'battle', 'victory', 'defeat', 'complete'].includes(s.phase)) return false;
-      if (!Number.isInteger(s.round) || s.round < 0 || s.round > 4 || !Number.isInteger(s.coins) || s.coins < 0 || s.coins > 1e12) return false;
-      if(s.technologies!==undefined&&!validTechnologyLevels(s.technologies))return false;
-      if(s.farmLevel!==undefined&&(!Number.isInteger(s.farmLevel)||s.farmLevel<1||s.farmLevel>3))return false;
-      if(s.buildings!==undefined&&(!Array.isArray(s.buildings)||s.buildings.length>30||s.buildings.some(id=>typeof id!=='string')))return false;
-      if (![0, 1].includes(s.cityLevel) || !Number.isFinite(s.cityHp) || s.cityHp < 0 || s.cityHp > TOWN_NODES[s.cityLevel].hp+technologyModifiers(s.technologies??{}).cityHp || typeof s.farm !== 'boolean' || typeof s.kingPaid !== 'boolean') return false;
-      if (s.research !== undefined && (!validResearchState(s.research) || s.research.lastRound !== s.round)) return false;
-      if (s.farmPlot !== undefined && (!s.farm || farmPlacementError(s.farmPlot))) return false;
-      if (!Number.isFinite(s.farmTime) || s.farmTime < 0 || s.farmTime >= 10 || !Number.isFinite(s.elapsed) || s.elapsed < 0 || !Number.isInteger(s.nextId) || !Number.isInteger(s.focus)) return false;
-      if (!Array.isArray(s.units) || s.units.length > 32 || s.units.some(u => !u || typeof u !== 'object') || new Set(s.units.map(u => u.id)).size !== s.units.length) return false;
-      const posts = s.units.filter(u => u.kind === 'guard' && u.post !== undefined).map(u => u.post);
-      if (posts.some(p => !Number.isInteger(p) || p! < 0 || p! >= RULES.armyCap) || new Set(posts).size !== posts.length) return false;
-      if (s.units.filter(u => u.kind === 'guard').length > RULES.armyCap) return false;
-      return s.units.every(u => u && ['guard', 'goblin'].includes(u.kind) && Number.isInteger(u.id) && u.id > 0 && u.id < s.nextId && Number.isFinite(u.x) && Math.abs(u.x) < 30 && Number.isFinite(u.y) && Math.abs(u.y) < 20 && Number.isFinite(u.hp) && u.hp > 0 && u.hp <= UNIT_DATA[u.kind].hp && [u.cooldown, u.flash, u.swing].every(v => Number.isFinite(v) && v >= 0) && Number.isInteger(u.target));
-    };
-    if (!valid(data.state) || (data.checkpoint !== null && (!valid(data.checkpoint) || !['ready', 'victory'].includes(data.checkpoint.phase)))) return null;
-    if (['battle', 'defeat'].includes(data.state.phase) && !data.checkpoint) return null;
-    const model = new BattleModel(); model.state = clone(data.state); model.checkpoint = clone(data.checkpoint);
-    // 保留v0.1.0的金钱、血量和回合；只给旧护卫补充缺失的驻守编号。
-    for (const snapshot of [model.state, model.checkpoint]) {
-      if (!snapshot) continue;
-      if (!snapshot.research) {
-        snapshot.research = newResearchState(snapshot.round);
-        // 旧版本没有研究点货币；仅按已有回合记录一次性迁移，不模拟离线产出。
-        snapshot.research.points = snapshot.round * RESEARCH_RULES.round;
-      }
-      if (snapshot.farm && !snapshot.farmPlot) snapshot.farmPlot = { ...DEFAULT_FARM };
-      const occupied = new Set(snapshot.units.filter(u => u.kind === 'guard' && u.post !== undefined).map(u => u.post));
-      for (const unit of snapshot.units.filter(u => u.kind === 'guard' && u.post === undefined)) {
-        let post = 0; while (occupied.has(post)) post++;
-        unit.post = post; occupied.add(post);
-      }
-    }
-    model.message = '已恢复本地进度；关闭期间不结算离线收益。'; return model;
-  }
+  m.message='已恢复第'+m.state.round+'回合的开拓进度。'+(m.state.phase==='battle'?'城外战斗继续。':m.state.phase==='defeat'?'城池已失守，可回到战前。':'可以建设、补员或继续迎敌。');return m;
+ }
 }
