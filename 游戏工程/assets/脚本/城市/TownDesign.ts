@@ -70,6 +70,10 @@ export const RESEARCH_DESIGN = {
   "round": 5,
   "settlementSupport": 20
 } as const;
+export const HOSPITAL_RULES = {
+  "hpPerCopper": 20,
+  "medicUnlockTown": "C004"
+} as const;
 export const BUILDING_DESIGNS = [
   {
     "id": "B001",
@@ -161,21 +165,17 @@ export const BUILDING_DESIGNS = [
   {
     "id": "B006",
     "name": "医院",
-    "unlockTown": "C003",
-    "cost": null,
-    "width": null,
-    "height": null,
+    "unlockTown": "C002",
+    "cost": 15,
+    "width": 2,
+    "height": 2,
     "maxCount": 1,
     "maxLevel": 10,
     "upgradeable": true,
     "phase1": true,
     "requiredTechnology": null,
-    "purpose": "建成后可招募医疗队；其他医疗作用待填",
-    "pendingFields": [
-      "cost",
-      "width",
-      "height"
-    ]
+    "purpose": "战后花铜币治疗存活部队，不复活、不被动回血；医疗队推迟至定居点后招募",
+    "pendingFields": []
   },
   {
     "id": "B007",
@@ -220,7 +220,7 @@ export const BUILDING_DESIGNS = [
     "cost": 0,
     "width": null,
     "height": null,
-    "maxCount": null,
+    "maxCount": 1,
     "maxLevel": null,
     "upgradeable": null,
     "phase1": true,
@@ -238,7 +238,7 @@ export const BUILDING_DESIGNS = [
     "cost": null,
     "width": null,
     "height": null,
-    "maxCount": null,
+    "maxCount": 1,
     "maxLevel": null,
     "upgradeable": null,
     "phase1": false,
@@ -257,7 +257,7 @@ export const BUILDING_DESIGNS = [
     "cost": null,
     "width": null,
     "height": null,
-    "maxCount": null,
+    "maxCount": 1,
     "maxLevel": null,
     "upgradeable": null,
     "phase1": false,
@@ -276,7 +276,7 @@ export const BUILDING_DESIGNS = [
     "cost": null,
     "width": null,
     "height": null,
-    "maxCount": null,
+    "maxCount": 1,
     "maxLevel": null,
     "upgradeable": null,
     "phase1": false,
@@ -295,7 +295,7 @@ export const BUILDING_DESIGNS = [
     "cost": null,
     "width": null,
     "height": null,
-    "maxCount": null,
+    "maxCount": 1,
     "maxLevel": null,
     "upgradeable": null,
     "phase1": false,
