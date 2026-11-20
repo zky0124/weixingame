@@ -1,6 +1,6 @@
 import { UnitKind } from '../数据/UnitData';
 export interface Encounter { round:number; title:string; faction:'goblin'|'undead'; groups:readonly (readonly [UnitKind,number])[]; reward:number; city:number; boss?:boolean }
-// 固定组合调整数量与出场顺序，不按挂机时间给单位叠属性。后半段为阶段1配置，待定居点里程碑开放。
+// 固定组合调整数量与出场顺序，不按挂机时间给单位叠属性。后半段亡灵主线随定居点（C004）开放。
 export const ENCOUNTERS:readonly Encounter[] = [
  {round:1,title:'平原初遇',faction:'goblin',groups:[['goblin',3]],reward:0,city:0},
  {round:2,title:'侦察小队',faction:'goblin',groups:[['goblin',4]],reward:10,city:1},
@@ -35,7 +35,7 @@ export const ENCOUNTERS:readonly Encounter[] = [
  {round:31,title:'骑士前夜',faction:'undead',groups:[['skeletonGeneral',1],['skeletonMage',3],['ghost',2]],reward:180,city:3},
  {round:32,title:'无头骑士',faction:'undead',groups:[['headlessKnight',1],['zombie',2]],reward:250,city:3,boss:true},
 ];
-export const PLAYABLE_ROUNDS=16;
+export const PLAYABLE_ROUNDS=32;
 export const WILD_RULES={unlockAfter:2,interval:45,firstInterval:60,maxActiveWaves:1,maxEnemies:40} as const;
 export function wildTier(completed:number):number { return completed>=16?3:completed>=8?2:1; }
 export function wildRoster(completed:number,serial:number):UnitKind[] {

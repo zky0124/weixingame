@@ -22,17 +22,36 @@ assert(city.buildFarm({col:-4,row:2}));assert(city.buildFarm({col:2,row:2}));con
 assert(!city.build('archerCamp',{col:-4,row:2}));assert(city.build('archerCamp',{col:-4,row:-4}));assert(city.build('militiaCamp',{col:2,row:-4}));
 assert(city.upgradeFarm(city.plots.find(p=>p.kind==='farm').id));const before=city.state.coins;city.tickProduction(10);assert.equal(city.state.coins-before,4,'2+1+1田收入叠加');assert(BattleModel.load(city.save()));
 assert(city.recruit('archer'));assert(city.recruit('militia'));assert(city.repairCity());assert.equal(city.state.cityHp,200);assert.equal(city.repairCost,0);
-// 连续16回合：不加资源、不等挂机、不靠广告；按实际费用招募/建造/修缮，首领战调整编队。
+// 定居点农田可升3级、主城到顶后不再升级（需主城3级）。
+const settlement=ready(20);settlement.state.coins=1000;settlement.state.cityLevel=3;
+const sf=settlement.plots.find(p=>p.kind==='farm');
+assert(settlement.upgradeFarm(sf.id));assert.equal(sf.level,2);
+assert(settlement.upgradeFarm(sf.id));assert.equal(sf.level,3);
+assert.equal(settlement.upgradeError(),'定居点已是最高等级');assert(!settlement.upgrade());
+assert(BattleModel.load(settlement.save()));
+// 连续20回合通往定居点：不加资源、不靠广告；按实际费用招募/建造/修缮，首领战调整编队。
+// 回合之间留30秒整备（农田产出、野怪来袭均按真实规则结算），17–20回合攒定居点升级费。
+// 注意：21–32回合亡灵主线的数据已在上方校验（32场遭遇、无头骑士），但完整通关
+// 还需阶段1的英雄/训练/科技系统接入 BattleModel——幽魂与无头骑士护甲5，超出
+// 基础驻军最高攻击4点，研究塔（B007）也尚未有建造入口；本脚本只验证到定居点解锁。
 const m=new BattleModel();
-for(let round=1;round<=16;round++){
+for(let round=1;round<=20;round++){
  if(round===2){assert(m.upgrade());assert(m.buildFarm());assert(m.build('hospital',{col:-4,row:-4}));}
- if(round===9){assert(m.state.coins>=230,'主线资金足以支付营地和两兵营');assert(m.upgrade());assert(m.build('militiaCamp',{col:-4,row:2}));assert(m.build('archerCamp',{col:2,row:-4}));}
+ if(round===9){assert(m.state.coins>=230,'主线资金足以支付营地和两兵营');assert(m.upgrade());assert(m.build('militiaCamp',{col:-4,row:2}));assert(m.build('archerCamp',{col:2,row:-4}));assert(m.buildFarm({col:2,row:2}));assert(m.buildFarm({col:-2,row:-4}));}
+ if(round===10){const f=m.plots.find(p=>p.kind==='farm');if(f&&f.level===1&&m.state.coins>=30)assert(m.upgradeFarm(f.id));}
  if(round>1){m.repairCity();if(m.treatmentCost())assert(m.treat(),'可以用正常收入治疗残血，不靠解散重招');}
- while(m.guards.length<m.armyCapacity&&m.state.coins){const count=k=>m.guards.filter(u=>u.kind===k).length,kind=m.state.cityLevel===2?(count('archer')<3?'archer':count('militia')<3?'militia':'guard'):'guard';if(!m.recruit(kind)&&!m.recruit())break;}
+ const reserve=round>=17?500:0;
+ while(m.guards.length<m.armyCapacity&&(m.state.coins>reserve||m.guards.length<6)){const count=k=>m.guards.filter(u=>u.kind===k).length,kind=m.state.cityLevel===2?(count('archer')<3?'archer':count('militia')<3?'militia':'guard'):'guard';if(!m.recruit(kind)&&!m.recruit())break;}
  if(round===16){for(const u of [...m.guards])assert(m.dismiss(u.id));for(let i=0;i<6;i++)assert(m.recruit('archer'));for(let i=0;i<2;i++)assert(m.recruit('militia'));}
  assert(m.startRound());if(round>4)assert(m.state.pending.length>0,'较大波次分批入场');battle(m);assert.notEqual(m.state.phase,'defeat','第'+round+'回合');assert.equal(m.completed,round);assert(BattleModel.load(m.save()),'每回合存档可恢复');
+ tick(m,30);
+ // 野怪残敌清完再整备，避免交战状态下修缮/治疗被拒。
+ for(let i=0;i<60*30&&m.enemies.length&&m.state.phase!=='defeat';i++)m.tick(1/30);
 }
-assert.equal(m.state.phase,'complete');assert(m.state.goblinBossDefeated);assert(!m.startRound());
+// 定居点升级：20回合后攒够900铜，C004开放（驻军上限10、耐久250、第四块农田）。
+assert.equal(m.state.cityLevel,2);assert(m.upgrade(),'定居点升级需要900铜与20回合');assert.equal(m.state.cityLevel,3);assert.equal(m.armyCapacity,10);assert.equal(m.maxCityHp,250);
+assert(m.buildFarm({col:-4,row:-2}),'定居点开放第四块农田');
+assert(BattleModel.load(m.save()),'定居点存档可恢复');
 const old=ready(4).save();old.state.phase='complete';delete old.state.completed;delete old.state.wild;delete old.state.pending;delete old.state.plots;
 const migrated=BattleModel.load(old);assert(migrated);assert.equal(migrated.state.phase,'victory');assert.equal(migrated.completed,4);assert(migrated.startRound());
 const bad=city.save();bad.state.plots[1].col=bad.state.plots[0].col;bad.state.plots[1].row=bad.state.plots[0].row;assert.equal(BattleModel.load(bad),null);
@@ -44,4 +63,4 @@ protect.tick(.01);assert(Math.abs(wolf.hp-1.4)<1e-6,'护卫对刺客额外30%');
 const magic=arena();magic.state.technologies={T008:5};const tank=unit(magic,'guard',6,0,1);unit(magic,'mageGoblin',6,1);magic.tick(.01);assert.equal(tank.hp,12,'魔法无视护卫护甲强化');
 const waiting=ready(4);assert(waiting.startRound());waiting.state.units=waiting.guards;waiting.state.pending=[{kind:'goblin',slot:0,delay:2}];waiting.tick(.1);assert.equal(waiting.state.phase,'battle','尚未入场的怪物阻止提前判胜');
 const heal=arena(),doctor=unit(heal,'healerGoblin',6,0),machine=unit(heal,'siegeGoblin',6,.5),wounded=unit(heal,'goblin',6.5,0);doctor.hp=10;machine.hp=60;wounded.hp=5;heal.tick(.01);assert.equal(doctor.hp,10,'医师不自疗');assert.equal(machine.hp,60,'不治疗机械');assert.equal(wounded.hp,8,'按表每次治疗3');
-console.log('营地与刷新验证通过：16回合无广告/无挂机资金闭环、多田/兵营/修缮、野怪实刷、主野怪共存、奖励隔离、防重复、旧档和位置存档。');
+console.log('营地与刷新验证通过：20回合无广告资金闭环、定居点升级与农田3级、多田/兵营/修缮、野怪实刷、主野怪共存、奖励隔离、防重复、旧档和位置存档。');

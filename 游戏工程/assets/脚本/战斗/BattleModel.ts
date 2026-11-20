@@ -83,10 +83,10 @@ export class BattleModel {
   this.message=(id===undefined?'全队':'士兵')+'治疗完成，花费'+cost+'铜币；阵亡单位不能在医院复活。';return true;
  }
  upgradeError():string{
-  const s=this.state;if(s.phase==='defeat')return '城池已失守';if(s.cityLevel>=2)return '营地版本最高为小型营地';const next=TOWN_NODES[s.cityLevel+1];
+  const s=this.state;if(s.phase==='defeat')return '城池已失守';if(s.cityLevel>=3)return '定居点已是最高等级';const next=TOWN_NODES[s.cityLevel+1];
   if(this.completed<next.minRound)return '先完成第'+next.minRound+'回合';if(s.coins<next.cost)return '升级需要'+next.cost+'铜币';return '';
  }
- upgrade():boolean{const error=this.upgradeError();if(error){this.message=error;return false;}this.state.coins-=TOWN_NODES[this.state.cityLevel+1].cost;this.state.cityLevel++;this.message=this.townName+'建成！'+(this.state.cityLevel===2?'开放三块农田、民兵营和弓手营。':'解锁第一块农田。');return true;}
+ upgrade():boolean{const error=this.upgradeError();if(error){this.message=error;return false;}this.state.coins-=TOWN_NODES[this.state.cityLevel+1].cost;this.state.cityLevel++;this.message=this.townName+'建成！'+(this.state.cityLevel===3?'开放第四块农田，驻军上限提升至10人。':this.state.cityLevel===2?'开放三块农田、民兵营和弓手营。':'解锁第一块农田。');return true;}
  placementError(plot:CityCell):string{return farmPlacementError(plot,this.cityRadius,this.plots);}
  buildingCost(kind:PlotKind):number{return BUILDING_DESIGNS.find(b=>b.id===PLOT_BUILDING_IDS[kind])!.cost!;}
  buildingError(kind:PlotKind):string{
@@ -109,8 +109,8 @@ export class BattleModel {
  }
  buildFarm(cell:CityCell=DEFAULT_FARM):boolean{return this.build('farm',cell);}
  upgradeFarm(id:number):boolean{
-  const p=this.plots.find(p=>p.id===id&&p.kind==='farm');if(!p||p.level>=2||this.state.cityLevel<2||this.state.phase==='defeat')return false;
-  const next=FARM_LEVELS[p.level];if(this.state.coins<next.cost)return false;this.state.coins-=next.cost;p.level++;this.syncLegacyFarm();this.message='农田升至'+p.level+'级，每次在线产出与迎敌产出均为'+next.passive+'铜。';return true;
+  const p=this.plots.find(p=>p.id===id&&p.kind==='farm');if(!p||this.state.cityLevel<2||this.state.phase==='defeat')return false;
+  const next=FARM_LEVELS[p.level];if(!next||this.state.cityLevel<next.requiredTown||this.state.coins<next.cost)return false;this.state.coins-=next.cost;p.level++;this.syncLegacyFarm();this.message='农田升至'+p.level+'级，每次在线产出与迎敌产出均为'+next.passive+'铜。';return true;
  }
  private syncLegacyFarm():void{const p=this.plots.find(p=>p.kind==='farm');this.state.farm=!!p;if(p){this.state.farmPlot={col:p.col,row:p.row};this.state.farmTime=p.timer;this.state.farmLevel=p.level;}}
  startRound():boolean{
@@ -231,7 +231,7 @@ export class BattleModel {
    for(const u of this.guards){u.target=0;u.swing=0;}
    if(!s.kingPaid){s.kingPaid=true;s.coins+=50;this.message='首战告捷！击杀3铜币，国王另送50铜币。进入主城升级。';}
    else{s.coins+=ENCOUNTERS[s.round-1].reward;this.message='守住第'+s.round+'回合，主线赏金＋'+ENCOUNTERS[s.round-1].reward+'铜币。';}
-   if(s.round===16){s.goblinBossDefeated=true;this.message='哥布林头领倒下，白骨大军正在平原集结。营地版本完成，亡灵主线将在下一里程碑开放。';}
+   if(s.round===16){s.goblinBossDefeated=true;this.message='哥布林头领倒下，白骨大军正在平原集结。亡灵主线已经开启，继续推进。';}
   }
  }
  tickProduction(dt:number):void{
@@ -247,7 +247,7 @@ export class BattleModel {
   const valid=(s:Snapshot):boolean=>{
    if(!s||s.version!==1||!['ready','battle','victory','defeat','complete'].includes(s.phase))return false;
    if(!Number.isInteger(s.round)||s.round<0||s.round>PLAYABLE_ROUNDS||!Number.isInteger(s.coins)||s.coins<0||s.coins>1e12)return false;
-   if(![0,1,2].includes(s.cityLevel)||typeof s.farm!=='boolean'||typeof s.kingPaid!=='boolean')return false;
+   if(![0,1,2,3].includes(s.cityLevel)||typeof s.farm!=='boolean'||typeof s.kingPaid!=='boolean')return false;
    if(s.technologies!==undefined&&!validTechnologyLevels(s.technologies))return false;
    if(s.farmLevel!==undefined&&(!Number.isInteger(s.farmLevel)||s.farmLevel<1||s.farmLevel>3))return false;
    if(s.buildings!==undefined&&(!Array.isArray(s.buildings)||s.buildings.length>30||s.buildings.some(id=>typeof id!=='string')))return false;
@@ -257,7 +257,7 @@ export class BattleModel {
    if(!Number.isFinite(s.farmTime)||s.farmTime<0||s.farmTime>=10||!Number.isFinite(s.elapsed)||s.elapsed<0)return false;
    if(!Number.isSafeInteger(s.nextId)||s.nextId<1||!Number.isInteger(s.focus))return false;
    if(!Array.isArray(s.units)||s.units.length>64||s.units.some(u=>!u||!(u.kind in UNIT_DATA))||new Set(s.units.map(u=>u.id)).size!==s.units.length)return false;
-   const posts=s.units.filter(u=>allied(u)&&u.post!==undefined).map(u=>u.post);if(posts.some(p=>!Number.isInteger(p)||p!<0||p!>=8)||new Set(posts).size!==posts.length||s.units.filter(allied).length>8)return false;
+   const posts=s.units.filter(u=>allied(u)&&u.post!==undefined).map(u=>u.post);if(posts.some(p=>!Number.isInteger(p)||p!<0||p!>=10)||new Set(posts).size!==posts.length||s.units.filter(allied).length>10)return false;
    if(!s.units.every(u=>Number.isSafeInteger(u.id)&&u.id>0&&u.id<s.nextId&&Number.isFinite(u.x)&&Math.abs(u.x)<30&&Number.isFinite(u.y)&&Math.abs(u.y)<20&&Number.isFinite(u.hp)&&u.hp>0&&u.hp<=unitData(u.kind).hp&&[u.cooldown,u.flash,u.swing].every(v=>Number.isFinite(v)&&v>=0)&&Number.isInteger(u.target)))return false;
    if(s.units.some(u=>(u.lastAttacker!==undefined&&(!Number.isSafeInteger(u.lastAttacker)||u.lastAttacker<1||u.lastAttacker>=s.nextId))||(u.attackedAt!==undefined&&(!Number.isFinite(u.attackedAt)||u.attackedAt<0||u.attackedAt>s.elapsed))))return false;
    if(s.completed!==undefined&&(!Number.isInteger(s.completed)||s.completed<0||s.completed>s.round))return false;
