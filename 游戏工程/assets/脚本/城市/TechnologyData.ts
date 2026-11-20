@@ -110,7 +110,7 @@ export const TECHNOLOGIES = [
     "name": "熟练老手",
     "branch": "远距离打击",
     "maxLevel": 1,
-    "pointCost": null,
+    "pointCost": 20,
     "coinCost": 0,
     "prerequisites": [
       {

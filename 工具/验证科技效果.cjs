@@ -4,7 +4,17 @@ const out=path.resolve(process.argv[2]),T=require(path.join(out,'城市/Technolo
 const context={hasTower:true,town:3,farmLevel:3,buildings:['B006','B008']};
 let levels={},wallet={points:100000,coins:100000};
 assert.equal(TECHNOLOGIES.length,18);
-assert.match(T.purchaseTechnology(levels,'T006',wallet,context),/尚未填写/);
+// T006 费用已补全为 20（对齐 T003）：此前“尚未填写”的空白费用用例不再适用，
+// 改为验证 T006 的完整购买路径——先被 T005 前置拦住，满级 T005 后可购买并解锁熟练弓箭手。
+assert.equal(TECHNOLOGIES.find(n=>n.id==='T006').pointCost,20);
+{const t6levels={},t6wallet={points:100,coins:0};
+assert.match(T.purchaseTechnology(t6levels,'T006',t6wallet,context),/前置/);
+for(let i=0;i<5;i++)assert.equal(T.purchaseTechnology(t6levels,'T005',t6wallet,context),'');
+assert.equal(T.purchaseTechnology(t6levels,'T006',t6wallet,context),'');
+assert.equal(t6wallet.points,30);
+assert.equal(T.technologyModifiers(t6levels).attack['弓箭手'],5);
+assert(T.technologyModifiers(t6levels).unlockedUnits.includes('熟练弓箭手'));}
+assert.match(T.purchaseTechnology(levels,'T003',wallet,context),/前置/);
 assert.match(T.purchaseTechnology(levels,'T003',wallet,context),/前置/);
 for(let i=0;i<5;i++)assert.equal(T.purchaseTechnology(levels,'T001',wallet,context),'');
 assert.equal(wallet.points,99950);assert.equal(T.technologyModifiers(levels).attack['战士'],5);
@@ -34,4 +44,4 @@ assert.equal(BattleModel.load(m.save()).research.points,890);
 m.state.farm=true;m.state.farmLevel=3;m.state.technologies={T010:1,T011:3,T012:1,T013:3};m.state.cityHp=50;
 const before=m.state.coins;m.tickProduction(8);assert.equal(m.state.coins-before,6);assert.equal(m.maxCityHp,150);
 assert.equal(m.state.cityHp,50,'建科技不凭空治满城池');
-console.log('18项科技效果验证通过：等级/职业/前置合流、资源原子扣除、空白费用、研究周期与全部收入加成、农田、城池及存档。');
+console.log('18项科技效果验证通过：等级/职业/前置合流、资源原子扣除、T006费用补全、研究周期与全部收入加成、农田、城池及存档。');

@@ -148,7 +148,7 @@ window.TECH_TREE_SEED = {
       "branch": "远距离打击",
       "color": "#75bc95",
       "level": 1,
-      "points": null,
+      "points": 20,
       "coins": null,
       "seconds": null,
       "effect": "解锁熟练弓箭手",
