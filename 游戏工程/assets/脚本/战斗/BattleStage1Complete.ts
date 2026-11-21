@@ -1495,3 +1495,158 @@ export function resolveWaveThreatCounterFormation(
   }
   return null;
 }
+
+/** v8.3 科技树同分支节点循环切换与城内浮动栏信息区点击解析 */
+export function resolveNextBranchTechNodeId(
+  branchNodes: Array<{ id: string; maxLevel: number }>,
+  currentTechId: string,
+  techLevels: Record<string, number>,
+): string {
+  if (branchNodes.length === 0) return currentTechId;
+  const curIdx = Math.max(0, branchNodes.findIndex(n => n.id === currentTechId));
+  for (let step = 1; step <= branchNodes.length; step++) {
+    const cand = branchNodes[(curIdx + step) % branchNodes.length];
+    if ((techLevels[cand.id] || 0) < cand.maxLevel) return cand.id;
+  }
+  return branchNodes[(curIdx + 1) % branchNodes.length].id;
+}
+
+/** v8.4 城内已建建筑横向芯片条实时行动状态微徽章解析 */
+export function resolveBuiltPlotQuickChipBadge(
+  buildingKind: string,
+  farmCanUpgrade: boolean,
+  hasInjuredAllies: boolean,
+  canAffordTraining: boolean,
+  hasReadyTech: boolean,
+  ronFreeAvailable: boolean,
+  canExchangeBmCopper: boolean,
+  canRecruitFromCamp: boolean,
+): string | null {
+  if (buildingKind === 'farm') return farmCanUpgrade ? '⬆️可升' : null;
+  if (buildingKind === 'hospital') return hasInjuredAllies ? '💊可疗' : null;
+  if (buildingKind === 'trainingCamp') return canAffordTraining ? '🎯可训' : null;
+  if (buildingKind === 'researchTower') return hasReadyTech ? '📘可研' : null;
+  if (buildingKind === 'tavern') return ronFreeAvailable ? '👑免费' : null;
+  if (buildingKind === 'blackMarket') return canExchangeBmCopper ? '🪙可兑' : null;
+  if (
+    buildingKind === 'militiaCamp' ||
+    buildingKind === 'archerCamp' ||
+    buildingKind === 'mageTower'
+  ) {
+    return canRecruitFromCamp ? '⚔️可招' : null;
+  }
+  return null;
+}
+
+/** v8.5 顶部主导航栏与城内 5 抽屉标签栏已激活页签二次点击快捷动作解析 */
+export function resolveActiveMainNavSecondTapAction(
+  activeTab: 'battle' | 'town' | 'tech' | 'codex',
+): 'reset_battle_cam_and_toggle_recruit' | 'reset_town_cam_and_build_tab' | 'focus_recommended_tech' | 'cycle_codex_category' {
+  if (activeTab === 'battle') return 'reset_battle_cam_and_toggle_recruit';
+  if (activeTab === 'town') return 'reset_town_cam_and_build_tab';
+  if (activeTab === 'tech') return 'focus_recommended_tech';
+  return 'cycle_codex_category';
+}
+
+export function resolveActiveTownDrawerTabSecondTapAction(
+  drawerTab: 'build' | 'tavern' | 'hospital' | 'training' | 'market',
+  hasBuildingForTab: boolean,
+): 'select_build_preview' | 'quick_build_or_confirm' | 'deploy_or_locate_hero' | 'heal_all' | 'train_next' | 'exchange_bm_copper' {
+  if (drawerTab === 'build') return 'quick_build_or_confirm';
+  if (!hasBuildingForTab) return 'select_build_preview';
+  if (drawerTab === 'tavern') return 'deploy_or_locate_hero';
+  if (drawerTab === 'hospital') return 'heal_all';
+  if (drawerTab === 'training') return 'train_next';
+  return 'exchange_bm_copper';
+}
+
+/** v8.6 全屏沉浸迷你浮岛战前/战中双模按钮动作与文案解析 */
+export function resolveImmersiveMiniDockButtonState(
+  fighting: boolean,
+  enemyCount: number,
+  nextRound: number,
+  completedAllRounds: boolean,
+  formationMode: 'standard' | 'compact' | 'expanded',
+): {
+  primaryLabel: string;
+  primaryAction: 'focus_fire' | 'start_wave';
+  secondaryLabel: string;
+  secondaryAction: 'cycle_stance' | 'quick_prep';
+} {
+  if (fighting) {
+    const stanceLbl =
+      formationMode === 'compact'
+        ? '🛡️ 紧缩阵'
+        : formationMode === 'expanded'
+          ? '🏹 外扩阵'
+          : '⚔️ 变阵';
+    return {
+      primaryLabel: `🎯 集火(${enemyCount})`,
+      primaryAction: 'focus_fire',
+      secondaryLabel: stanceLbl,
+      secondaryAction: 'cycle_stance',
+    };
+  }
+  return {
+    primaryLabel: completedAllRounds ? '🏆 已通关' : `⚔️ 迎战 R${nextRound}`,
+    primaryAction: 'start_wave',
+    secondaryLabel: '✨ 整备',
+    secondaryAction: 'quick_prep',
+  };
+}
+
+/** v8.7 主战场底栏双主按钮（#btnStartWave / #btnQuickPrep）战前与战中双模状态解析 */
+export function resolveBattleBottomPrimaryButtonsState(
+  fighting: boolean,
+  enemyCount: number,
+  nextRound: number,
+  completedAllRounds: boolean,
+  castleMissingHp: number,
+  copper: number,
+  gameSpeed: number,
+): {
+  startBtnLabel: string;
+  startBtnAction: 'focus_fire' | 'start_wave';
+  prepBtnLabel: string;
+  prepBtnAction: 'emergency_repair' | 'cycle_speed' | 'quick_prep';
+} {
+  if (fighting) {
+    const canRepair = castleMissingHp > 0 && copper > 0;
+    return {
+      startBtnLabel: `🎯 集火敌军 (${enemyCount})`,
+      startBtnAction: 'focus_fire',
+      prepBtnLabel: canRepair
+        ? `🔨 紧急修城 (${Math.ceil(castleMissingHp / 5)}🪙)`
+        : `⚡ 倍速 ${gameSpeed}x (点此加速)`,
+      prepBtnAction: canRepair ? 'emergency_repair' : 'cycle_speed',
+    };
+  }
+  return {
+    startBtnLabel: completedAllRounds ? '🏆 32回合已通关' : `⚔️ 迎击第 ${nextRound} 回合`,
+    startBtnAction: 'start_wave',
+    prepBtnLabel: '✨ 一键整备',
+    prepBtnAction: 'quick_prep',
+  };
+}
+
+/** v8.8 城内顶栏农田按钮与主城升阶按钮智能状态解析 */
+export function resolveSmartFarmHeaderButtonState(
+  cityLevel: number,
+  farmCount: number,
+  maxFarms: number,
+  nextUpgradableLevel: number | null,
+  nextUpgradeCost: number,
+): { mode: 'upgrade_town_first' | 'build_first_farm' | 'upgrade_farm' | 'expand_farm' | 'maxed'; label: string } {
+  if (farmCount === 0) {
+    return cityLevel < 1
+      ? { mode: 'upgrade_town_first', label: '🌾 需升简易房屋建田' }
+      : { mode: 'build_first_farm', label: '🌾 点此选址建农田 (5🪙)' };
+  }
+  if (nextUpgradableLevel !== null) {
+    return { mode: 'upgrade_farm', label: `🌾 升农田Lv.${nextUpgradableLevel} (${nextUpgradeCost}🪙)` };
+  }
+  if (farmCount < maxFarms) {
+    return { mode: 'expand_farm', label: `🌾 扩建新农田 (${farmCount}/${maxFarms}·5🪙)` };
+  }
+  return { mode: 'maxed', label: cityLevel >= 3 ? '🌾 农田全部Lv.3满级' : `🌾 农田已达Lv.${cityLevel}上限` };
+}
