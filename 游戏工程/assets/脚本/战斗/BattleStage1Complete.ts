@@ -1464,3 +1464,34 @@ export function resolveTechTopBannerPillAction(
   if (!battleActive) return { action: 'wild_patrol', targetTechId: null };
   return { action: 'toast', targetTechId: null };
 }
+
+/** v8.2 主战场已选友军二次点按动作与波次敌军标签反制阵型解析 */
+export function resolveSecondTapAllyBattleAction(
+  isInjured: boolean,
+  hasHospital: boolean,
+  hasPromotionPath: boolean,
+  isTrainableBelowMax: boolean,
+  hasTrainingCamp: boolean,
+): 'heal' | 'promote' | 'train' | 'center_camera' {
+  if (isInjured && hasHospital) return 'heal';
+  if (hasPromotionPath) return 'promote';
+  if (isTrainableBelowMax && hasTrainingCamp) return 'train';
+  return 'center_camera';
+}
+
+export function resolveWaveThreatCounterFormation(
+  enemyKind: string,
+  enemyJob: string,
+): 'compact' | 'expanded' | null {
+  if (enemyJob === '刺客' || enemyKind === 'goblinAssassin') return 'compact';
+  if (
+    enemyJob === '攻城' ||
+    enemyKind === 'goblinChariot' ||
+    enemyKind === 'necromancer' ||
+    enemyKind === 'skeletonMage' ||
+    enemyKind === 'goblinShaman'
+  ) {
+    return 'expanded';
+  }
+  return null;
+}
