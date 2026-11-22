@@ -60,10 +60,11 @@ export class UnitArt {
     return node;
   }
 
-  static widthFor(kind: UnitKind): number {
-    if (kind === 'headlessKnight') return 116;
-    if (kind === 'goblinBoss') return 96;
-    if (kind === 'skeletonGeneral') return 86;
+  static widthFor(kind: UnitKind, isPhase2 = false, isSubCommander = false): number {
+    const pMul = isPhase2 ? 1.10 : 1.0;
+    if (kind === 'headlessKnight') return Math.round(152 * pMul);
+    if (kind === 'goblinBoss') return Math.round(128 * pMul);
+    if (kind === 'skeletonGeneral') return isSubCommander ? 92 : Math.round(124 * pMul);
     if (kind === 'siegeGoblin') return 68;
     if (kind === 'frog') return 60;
     if (kind === 'ron' || kind === 'ailin') return 54;

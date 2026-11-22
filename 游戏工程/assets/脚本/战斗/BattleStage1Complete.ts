@@ -1650,3 +1650,329 @@ export function resolveSmartFarmHeaderButtonState(
   }
   return { mode: 'maxed', label: cityLevel >= 3 ? '🌾 农田全部Lv.3满级' : `🌾 农田已达Lv.${cityLevel}上限` };
 }
+
+/** v8.9 城内顶栏全周期智能城政总管按钮（#btnQuickBuildRec）与讨伐野怪按钮实时状态解析 */
+export function resolveCityStewardButtonState(
+  recBuildingName: string | null,
+  recBuildingCost: number,
+  canUpgradeFarm: boolean,
+  farmTargetLevel: number,
+  farmCost: number,
+  canUpgradeTraining: boolean,
+  trainingUnitName: string,
+  trainingTargetLevel: number,
+  trainingCost: number,
+  injuredCount: number,
+  canUpgradeTown: boolean,
+  nextTownName: string,
+  nextTownCost: number,
+  nextRound: number,
+): { mode: 'build' | 'farm' | 'train' | 'heal' | 'upgrade_town' | 'return_battle'; label: string } {
+  if (recBuildingName) {
+    return { mode: 'build', label: `🏗️ 补建${recBuildingName} (${recBuildingCost}🪙)` };
+  }
+  if (canUpgradeFarm) {
+    return { mode: 'farm', label: `🌾 升农田Lv.${farmTargetLevel} (${farmCost}🪙)` };
+  }
+  if (canUpgradeTraining) {
+    return { mode: 'train', label: `🎯 训${trainingUnitName}Lv.${trainingTargetLevel} (${trainingCost}🪙)` };
+  }
+  if (injuredCount > 0) {
+    return { mode: 'heal', label: `💊 一键全疗(${injuredCount}人)` };
+  }
+  if (canUpgradeTown) {
+    return { mode: 'upgrade_town', label: `🏰 升至${nextTownName} (${nextTownCost}🪙)` };
+  }
+  return { mode: 'return_battle', label: `⚔️ 返战迎击 R${nextRound}` };
+}
+
+/** v9.0 商业化上线平衡系数（中后期波次强度曲线与首领二阶段狂暴护盾） */
+export function computeStage1WaveBalanceCurve(
+  roundNum: number,
+  isBossUnit: boolean,
+  isWildPatrol: boolean,
+): { hpMul: number; atkMul: number; phase2ShieldRatio: number; phase2RateMul: number } {
+  if (isWildPatrol || roundNum < 9) {
+    return { hpMul: 1.0, atkMul: 1.0, phase2ShieldRatio: 0.16, phase2RateMul: 1.22 };
+  }
+  const rSpan = Math.max(0, roundNum - 8);
+  const hpMul = isBossUnit
+    ? +(1.35 + Math.min(0.65, rSpan * 0.028)).toFixed(3)
+    : +(1.08 + Math.min(0.52, rSpan * 0.022)).toFixed(3);
+  const atkMul = isBossUnit
+    ? +(1.15 + Math.min(0.30, rSpan * 0.012)).toFixed(3)
+    : +(1.05 + Math.min(0.25, rSpan * 0.010)).toFixed(3);
+  return { hpMul, atkMul, phase2ShieldRatio: 0.16, phase2RateMul: 1.22 };
+}
+
+/** v9.1 中后期双波峰主力增援配置与宽屏椭圆科技树坐标投影 */
+export function resolveMidWaveClimaxReinforcements(roundNum: number): string[] {
+  if (roundNum < 9 || roundNum >= 32 || roundNum === 16) return [];
+  if (roundNum <= 12) return ['shieldGoblin', 'stoneGoblin', 'goblin'];
+  if (roundNum <= 15) return ['shieldGoblin', 'mageGoblin', 'wolf'];
+  if (roundNum <= 20) return ['skeletonWarrior', 'skeletonArcher', 'skeleton'];
+  if (roundNum <= 24) return ['skeletonWarrior', 'ghost', 'skeletonMage'];
+  return ['skeletonWarrior', 'skeletonMage', 'zombie'];
+}
+
+export function projectEllipticalTechNodeCoord(
+  cx: number,
+  cy: number,
+  angleDeg: number,
+  ringRadius: number,
+  rxScale = 1.28,
+  ryScale = 0.86,
+): { x: number; y: number } {
+  const rad = (angleDeg * Math.PI) / 180;
+  return {
+    x: +(cx + Math.cos(rad) * ringRadius * rxScale).toFixed(1),
+    y: +(cy + Math.sin(rad) * ringRadius * ryScale).toFixed(1),
+  };
+}
+
+
+// ============================================================================
+// v9.2 四时代全32波次平衡曲线、法师反游魂/高甲智能索敌、守军绝境士气觉醒与 1280x660 全景科技星盘
+// ============================================================================
+export const V92_PANORAMIC_TECH_CONFIG = {
+  viewBoxWidth: 1280,
+  viewBoxHeight: 660,
+  centerX: 640,
+  centerY: 330,
+  ellipseRx: 1.38,
+  ellipseRy: 0.90,
+  ringRadii: [0, 138, 242, 336],
+  capsuleWidth: 112,
+  capsuleHeight: 46,
+  selectedCapsuleWidth: 120,
+  selectedCapsuleHeight: 50
+};
+
+export function computeV92EraWaveBalanceMultipliers(
+  roundNum: number,
+  isBossUnit: boolean,
+  isWild: boolean
+): { hpMul: number; atkMul: number } {
+  if (isWild || !roundNum || roundNum < 9) return { hpMul: 1.0, atkMul: 1.0 };
+  if (roundNum <= 15) {
+    const s2 = roundNum - 9;
+    return {
+      hpMul: +(1.26 + s2 * 0.045).toFixed(3),
+      atkMul: +(1.14 + s2 * 0.025).toFixed(3)
+    };
+  }
+  if (roundNum === 16) {
+    return isBossUnit ? { hpMul: 1.50, atkMul: 1.20 } : { hpMul: 1.32, atkMul: 1.15 };
+  }
+  if (roundNum <= 20) {
+    const s3 = roundNum - 17;
+    return {
+      hpMul: 1.0,
+      atkMul: +(1.04 + s3 * 0.025).toFixed(3)
+    };
+  }
+  const rSpan = Math.max(0, roundNum - 20);
+  if (isBossUnit) {
+    if (roundNum === 28 || roundNum === 31) {
+      return { hpMul: 1.22, atkMul: 1.12 };
+    }
+    return {
+      hpMul: +(1.46 + Math.min(0.38, rSpan * 0.030)).toFixed(3),
+      atkMul: +(1.18 + Math.min(0.16, rSpan * 0.013)).toFixed(3)
+    };
+  }
+  return {
+    hpMul: +(1.25 + Math.min(0.44, rSpan * 0.033)).toFixed(3),
+    atkMul: +(1.12 + Math.min(0.22, rSpan * 0.016)).toFixed(3)
+  };
+}
+
+
+// ============================================================================
+// v9.3 后期亡灵战役与双首领（R25 亡者将军 / R32 无头骑士）破阵波峰配置 + 科技星盘全屏悬浮速研底栏
+// ============================================================================
+export const V93_LATEGAME_BOSS_CLIMAX = {
+  r25BossMultiplier: { hpMul: 1.88, atkMul: 1.38 },
+  r25SurgeRoster: ["skeletonWarrior", "skeletonMage", "zombie", "skeletonMage", "ghost"],
+  r32BossMultiplier: { hpMul: 1.86, atkMul: 1.33 },
+  r32SurgeRoster: ["skeletonMage", "ghost"],
+  techBranchOrder: ["战争之路", "魔力之路", "远距离打击", "守护之路", "繁荣之路", "建设之路", "科技之路", "救赎之路"]
+};
+
+
+// ============================================================================
+// v9.4 连续生涯经济与科研产出曲线（R8/R16/R20 皇家资助与 R21-R32 亡灵讨伐嘉奖）+ 1360x740 零重叠全景科技星盘
+// ============================================================================
+export const V94_CONTINUOUS_CAMPAIGN_ECONOMY = {
+  r8CampSubsidyCopper: 60,
+  r16GoblinBossBountyCopper: 160,
+  r20SettlementCharterCopper: 520,
+  r20RoyalAcademyEndowmentRp: 45,
+  r21To32UndeadWarChestCopper: 85,
+  r25UndeadGeneralWarChestCopper: 140,
+  r21To32AcademyWaveRp: 29,
+  r25AcademyBossWaveRp: 41,
+  techViewBox: { width: 1360, height: 740, cx: 680, cy: 370, rx: 1.40, ry: 0.82, ringRadii: [0, 136, 236, 332] }
+};
+
+
+// ============================================================================
+// v9.5 前期满编动态侦察增援（R2-R6）、终局无头骑士恐惧震城（R32）与全 18 项（40 级）科技完整推荐链
+// ============================================================================
+export const V95_FULL_TECH_REC_PRIORITY = [
+  "T002", "T007", "T012", "T014", "T004", "T008",
+  "T005", "T006", "T001", "T003", "T017", "T018",
+  "T009", "T010", "T013", "T015", "T011", "T016"
+];
+
+
+// ============================================================================
+// v9.6 三大章节首领（R16/R25/R32）二阶段与绝境反扑专属轰城技 + 战前真实时代波峰战力评估与科技星盘中心环形进度
+// ============================================================================
+export const V96_BOSS_KEEP_SIEGE_STRIKES = {
+  phase2At55Pct: {
+    goblinBoss: { dmg: 24, text: "🪨头领投石轰城 -24", color: "#fb923c" },
+    skeletonGeneral: { dmg: 30, text: "💀亡者骨矛轰城 -30", color: "#f87171" },
+    headlessKnight: { dmg: 36, text: "🐎恐惧震城 -36", color: "#c084fc" }
+  },
+  finalStandAt24Pct: {
+    goblinBoss: { dmg: 16, text: "💥狂暴砸城 -16", color: "#fbbf24" },
+    skeletonGeneral: { dmg: 20, text: "⚡冥火震城 -20", color: "#fb7185" },
+    headlessKnight: { dmg: 28, text: "⚡暗影震击 -28", color: "#fb7185" }
+  }
+};
+
+
+// ============================================================================
+// v9.7 T009【荒地开垦】第5农田自动开垦闭环 + R7+远程/法系敌军流矢袭城 + 科技胶囊单级收益简标
+// ============================================================================
+export const V97_TECH_SHORT_EFFECTS: Record<string, string> = {
+  T001: "战士攻+1", T002: "解锁法师塔", T003: "民兵晋升", T004: "法师攻+2",
+  T005: "弓手攻+1", T006: "弓手晋升",   T007: "护卫晋升", T008: "护卫甲+1",
+  T009: "农田+1块", T010: "产粮-2s",    T011: "产粮+1🪙", T012: "城防+50",
+  T013: "城防+1/s", T014: "科研-10s",   T015: "科研+1📘", T016: "研究塔晋升",
+  T017: "全体+1/s", T018: "治疗+1💚"
+};
+
+
+// ============================================================================
+// v9.8 1->32 连续零广告生涯 40/40 全科技满级毕业闭环（含 T016 二级研究塔）+ 攻城/重装破城震波与前期飞斧袭城 + 8大星盘分支实时满级徽章
+// ============================================================================
+export const V98_SETTLEMENT_ARCANE_TOME_CURVE = {
+  r20EndowmentRp: 100,
+  r21To24WaveRp: 95,
+  r25BossTomeRp: 260,
+  r26To31WaveRp: 150,
+  r32FinalTomeRp: 220,
+  siegeShockwaveChip: 7,
+  heavyShockwaveChip: 5,
+  earlyRaiderAxeChip: 4
+};
+
+
+// ============================================================================
+// v9.9 R25【亡者将军】首领二阶段骨火亲卫与骨矛轰城张力升级 + 21-32 回合三阶演练平滑梯度 + 科技树满级节点一键链式跳研
+// ============================================================================
+export const V99_R25_BOSS_CLIMAX_SPEC = {
+  r25BossHpMul: 1.72,
+  r25BossAtkMul: 1.24,
+  r25Phase2Escorts: ["skeletonWarrior", "skeletonArcher", "skeletonMage"],
+  r25Phase2KeepStrike: 28,
+  r25FinalStandKeepStrike: 18
+};
+
+
+// ============================================================================
+// v10.0 商业化正式版里程碑：酒馆三英雄满编自动替补与全英雄激励重招闭环 + 科技树18节点“当前->下一级”实时数值预览 + R15/R28/R30精英波次半血特技
+// ============================================================================
+export const V100_ELITE_MIDWAVE_CLIMAX = {
+  siegeGoblin50Pct: { shield: 18, duration: 4.0, keepStrike: 10, label: "⚙️装甲冲锋！" },
+  subCommanderGen50Pct: { shield: 20, duration: 4.0, label: "👹白骨壁垒！" },
+  necromancer50Pct: { shield: 16, duration: 3.5, bonusSummon: "skeleton", label: "🧙死灵秘仪！" }
+};
+
+
+// ============================================================================
+// v10.1 黑市差券一键看激励视频自动补券并直兑闭环 + 科技星盘“可研”角标与分支可研点 + R08/R20章节守门关半血反扑特技
+// ============================================================================
+export const V101_GATEKEEPER_CLIMAX = {
+  r08AxeGoblin50Pct: { shield: 12, duration: 3.5, keepStrike: 6, label: "📯反扑号角！" },
+  r20SkeletonWarrior50Pct: { shield: 15, duration: 3.5, keepStrike: 8, label: "⚰️墓园阴风！" }
+};
+
+
+// ============================================================================
+// v10.2 第32回合通关后【🏆 巅峰重演 R32】自由挑战闭环 + 科技星盘中心研究塔一键研发与三环阶位导览 + 顶部导航栏 可研·N 实时计数
+// ============================================================================
+export const V102_TRIUMPH_REPLAY_AND_RING_TIERS = {
+  triumphReplayRound: 32,
+  triumphReplayBonusRp: 30,
+  ringTierLabels: { 136: "Ⅰ阶基础环", 236: "Ⅱ阶进阶环", 332: "Ⅲ阶终极环" }
+};
+
+
+// ============================================================================
+// v10.3 科技星盘8大外圈分支内嵌进度条与可研点同步 + 第32回合通关实时战果勋章与终局★N巅峰凯旋星级递进 + 顶部资源胶囊智能二段动作
+// ============================================================================
+export const V103_TRIUMPH_PRESTIGE_SCALING = {
+  hpPerTriumphStar: 0.04,
+  maxTriumphBonusTier: 4,
+  outerBranchBarWidth: 82,
+  outerBranchBarHeight: 2.4
+};
+
+
+// ============================================================================
+// v10.4 晋升精锐兵种（护卫队长/熟练民兵/熟练弓手）完整继承同系训练营加成与战场详情卡一键训兵 + 科技树分支徽章二段直研 + 终局巅峰重演波次卡同步
+// ============================================================================
+export function resolveLineageTrainingKeyV104(kind: string): string | null {
+  if (kind === "guard" || kind === "guardCaptain") return "guard";
+  if (kind === "militia" || kind === "veteranMilitia") return "militia";
+  if (kind === "archer" || kind === "veteranArcher") return "archer";
+  if (kind === "medic") return "medic";
+  return null;
+}
+
+/** v10.5: Get ordered branch progression chain (Ring I -> Ring II -> Ring III) & Triumph Star pre-wave power multiplier */
+export function getTechBranchChain(branchName: string, allTechs: Array<{ id: string; name: string; branch: string; ring: number; maxLevel: number }>): Array<{ id: string; name: string; ring: number; maxLevel: number }> {
+  return allTechs.filter(t => t.branch === branchName).sort((a, b) => a.ring - b.ring);
+}
+export function getTriumphPowerMultipliers(roundNum: number, completedRound: number, triumphClearCount: number): { hpMul: number; atkMul: number } {
+  if (roundNum === 32 && completedRound >= 32) {
+    const tier = Math.min(5, Math.max(1, triumphClearCount || 1));
+    return { hpMul: 1 + tier * 0.04, atkMul: 1 + tier * 0.03 };
+  }
+  return { hpMul: 1.0, atkMul: 1.0 };
+}
+
+
+/** v10.6: Era-scaled late-campaign (R21-R32) siege volley & heavy melee Keep-shockwave damage calculator */
+export function getEraScaledKeepSiegeChip(roundNum: number, isRangedVolley: boolean, isMagic: boolean, isSiegeJob: boolean): { dmg: number; maxWaveMeleeChips: number } {
+  const isEra4 = roundNum >= 21;
+  if (isRangedVolley) {
+    return { dmg: isEra4 ? (isMagic ? 10 : 7) : (isMagic ? 6 : 4), maxWaveMeleeChips: isEra4 ? 4 : 2 };
+  }
+  return {
+    dmg: isEra4 ? (isSiegeJob ? 12 : 9) : (isSiegeJob ? 7 : 5),
+    maxWaveMeleeChips: isEra4 ? 4 : 2
+  };
+}
+
+
+/** v11.0: Epic Boss Colossal Scale, Phase-2 Growth & Dedicated Skill Cooldown Configs */
+export function getBossOverhaulProfile(kind: string, isPhase2: boolean): { spriteSize: number; radius: number; bgmStepMs: number; title: string } {
+  const mul = isPhase2 ? 1.10 : 1.0;
+  if (kind === "headlessKnight") {
+    return { spriteSize: Math.round(152 * mul), radius: 38, bgmStepMs: 175, title: "终局骑主·无头骑士" };
+  }
+  if (kind === "goblinBoss") {
+    return { spriteSize: Math.round(128 * mul), radius: 33, bgmStepMs: 188, title: "部落战王·哥布林头领" };
+  }
+  return { spriteSize: Math.round(124 * mul), radius: 32, bgmStepMs: 192, title: "死灵统帅·亡者将军" };
+}
+
+
+/** v11.5: Get 3-Phase Boss Dossier & Phase Threshold Ratios (55% Phase-2 Enrage, 24% Phase-3 Final Stand) */
+export function getBossPhaseThresholds(): { phase2Ratio: number; phase3Ratio: number } {
+  return { phase2Ratio: 0.55, phase3Ratio: 0.24 };
+}
