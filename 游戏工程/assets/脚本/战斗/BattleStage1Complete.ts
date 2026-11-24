@@ -1,3 +1,83 @@
+// [v15.2 商业化上线与交互打磨]
+// 1. 训练营满级兵系卡片（#trainingUnitList / upgradeTrainingAction）在场上该兵系零在编时解除禁用锁并切换为【✅ Lv.2 满级 · ⚔️招兵种名】一键征召。
+// 2. 科技树与主城抽屉未建核心建筑引导按钮（#techTowerNotice / #btnQuickResearchRec / #btnResearchTech / #btnHospitalHealAll / #btnQuickTrainNext / #trainingUnitList）统一新增实时铜币差额直显（·差X🪙）。
+// 3. 顶部铜币胶囊（handleHudPillShortcut("copper")）在城内农田已满额且全部升至 Lv.3 满级时自动聚焦农田地块并播报总产出效率，避免误触发上限受阻提示。
+// [v15.1 商业化上线与交互打磨]
+// 1. 训练营一键进阶按钮与训练抽屉页签二段点击（#btnQuickTrainNext / upgradeNextTrainingQuickAction / handleActiveTownHubTabSecondTap）新增驻军就地晋升（🎖️ 晋升精锐）智能回退与无死锁差额反馈。
+// 2. 顶部礼券胶囊与研究点胶囊（handleHudPillShortcut("tokens" | "research")）新增二段点击直接兑换黑市军需铜币或弹出推荐科技差额指引。
+// 3. 顶部主导航栏【🔮 科技树】状态徽章（#techBadgeDot）新增定居点阶段研究塔可建造提醒（可建塔）。
+// [v15.0 商业化上线与交互打磨]
+// 1. 战场驻军检视面板晋升/训练按钮（#allyInspectBadge #btnPromoteSelectedAlly）解除非战斗期禁用死锁，支持点击一键跳转解锁前置建筑/科技，并在兵系训练模式下直显铜币差额（·差X🪙）。
+// 2. 顶部主导航栏【🏗️ 主城建设】状态徽章（#townBadgeDot）扩展为 6 态智能感知（可升城 / 可建 / 可升田 / 可训兵 / 可晋升 / 可疗）。
+// 3. 城内酒馆操作浮条与地块双击（#btnUpgradeSelectedFarm / handlePlotClick）在罗恩已上阵而艾琳未上阵时自动切换为【🏹 招艾琳 / 重招艾琳】并实时显示铜币差额。
+// [v14.9 商业化上线与交互打磨]
+// 1. 城内等距地图画布建筑头顶动作胶囊（renderCityCanvas getInCityBuildingActionBadge）新增兵营满编替补进阶（⬆️替·精锐兵种名）与酒馆铜币可招/重招（👑可招英雄）高亮标签。
+// 2. 主城五联抽屉页签栏（#townHubTabBar updateTownHubTabBadges）训练营页签新增驻军就地晋升就绪微徽章（🎯 训练·可晋升）。
+// 3. 图鉴英雄卡片（renderCodexUnitFooter / handleCodexUnitQuickAction）新增在阵英雄实时血量（❤️当前/上限）、铜币招募差额（·差X🪙）直显与未建酒馆一键 2×2 选址引导。
+// [v14.8 商业化上线与交互打磨]
+// 1. 战场底栏与沉浸式迷你栏战前一键整备按钮（#btnQuickPrep / #btnImmQuickPrep / quickAutoPrepAction）新增精确铜币差额直显（·差X🪙）与疗伤差额提示。
+// 2. 主城已建建筑快捷条（#townPlotsGrid / resolvePlotChipActionBadge）新增兵营满编替补进阶徽章（⬆️可替）与酒馆铜币可招/重招徽章（👑可招）。
+// 3. 科技星盘顶部八大分支快捷栏（#techBranchQuickBar [data-quick-tech-branch]）新增完整分支路线等级进度 title 悬浮说明。
+// [v14.7 商业化上线与交互打磨]
+// 1. 科技研发主按钮与全屏浮条按钮（#btnResearchTech / #btnTechFloatResearch / researchTechAction）在满足前置但研究点或铜币暂缺时保持可点击并弹出精确差额与获取指引提示。
+// 2. 科技详情与全屏浮条同脉路线阶位胶囊（[data-req-jump-tech] / [data-float-jump-tech]）新增 ·⚡ 可研高亮标记与包含消耗/效果的原生 title 悬浮说明。
+// 3. 战场底栏修城/升城按钮（#btnRepairCity / handleCastleHpShortcut）新增修城铜币差额直显（·差X🪙）与主城满血且满足回合条件时的升城铜币差额预览。
+// [v14.6 商业化上线与交互打磨]
+// 1. 医院与战场医疗（healUnitsAction / #hospitalInjuredList / #btnHospitalHealAll / #btnHealSelectedAlly / #btnHealAllQuick）新增精确铜币差额直显（·差X🪙）与统一提示。
+// 2. 城内选中建筑操作浮条（#btnUpgradeSelectedFarm）全建筑分支（医院、训练营、酒馆、民兵营/弓兵营/法师塔）打通实时铜币差额直显与解锁/满员状态同步。
+// 3. 八维放射科技树星盘同心环阶胶囊（g[data-tech-ring] 新增 ·⚡ 可研标记与 <title> 环阶清单）、分支标题（g[data-tech-branch] <title> 路线清单）与中央研究塔枢纽（g[data-tech-center-hub] <title>）补齐完整悬浮提示。
+// [v14.5 商业化上线与交互打磨]
+// 1. 士兵招募（canRecruitSoldier）与驻军就地晋升（getSoldierPromotionQuote）新增精确铜币差额直显（需X🪙·差Y🪙 / 替补需X🪙·差Y🪙 / 晋升X🪙·差Y🪙），同步覆盖底栏招募条、图鉴与城内兵营浮条。
+// 2. 底栏招募条（#recruitStrip）英雄快捷卡与城内选中农田升级浮条按钮（#btnUpgradeSelectedFarm / upgradeSelectedFarmByIdx）新增实时铜币差额直显（·差X🪙）与主城等级提示。
+// 3. 八维放射科技树星盘节点（g[data-tech-node]）新增原生 SVG <title> 完整科技说明悬浮提示，提升大星盘悬停可读性。
+// [v14.4 商业化上线与交互打磨]
+// 1. 酒馆英雄面板（#tavernHeroList）与 recruitHeroAction 在酒馆未建时解除按钮禁用锁并一键引导选址建酒馆，铜币解锁/重招按钮实时直显铜币差额（·差X🪙）。
+// 2. 训练营面板（#btnQuickTrainNext / #trainingUnitList / upgradeTrainingAction）新增铜币暂缺时的精确差额直显（·差X🪙）。
+// 3. 主城建筑目录（#townBuildPalette / canPlaceBuilding / selectBuildFromCatalog）新增铜币差额直显（需X🪙·差Y🪙），且在仅差铜币时点击卡片同样进入城内 2×2 建造选址预览。
+// [v14.3 商业化上线与交互打磨]
+// 1. 修复第 32 回合终章大捷弹窗（#victorySummary）中终章 MVP 读取字段（统一使用 s.lastMvpKind + UNIT_DATA[s.lastMvpKind] 真实呈现终章功臣图标与名称）。
+// 2. 顶部状态栏“👥 人口”胶囊（handleHudPillShortcut("pop")）升级为在阵驻军顺次循环检视与二段连点原地疗伤/晋升/训兵快捷入口。
+// 3. 全屏沉浸迷你栏（#immersiveMiniDock [data-imm-pill="hp"]）统一接入 handleCastleHpShortcut()，城防残血时一键修城、满血时一键跳至主城升阶。
+// [v14.2 商业化上线与交互打磨]
+// 1. 主城顶栏主城升阶按钮（#btnUpgradeTown）与升阶动作（upgradeTownAction）在已通关要求回合但铜币暂缺时直显精确差额（·差X🪙）。
+// 2. 科技星盘右侧详情卡片流派徽章（#techDetailBranch）升级为“可立即研发优先 ➔ 前置已解锁优先”智能寻路，且当当前节点可研时点击直接完成研发。
+// 3. 战场底部“🏥 疗伤 / 全军满血”按钮（#btnHealAllQuick）升级为双模智能按钮：有伤员时一键全疗，全军满血时若存在可原位晋升或可训练强化的兵种则切换为“🎖️ 晋升精锐(X🪙)”或“🎯 训兵(Y🪙)”并支持一键执行。
+// [v14.1 商业化上线与交互打磨]
+// 1. 修复图鉴敌军卡片外壳（cardActAttr data-jump-round）对三大首领（哥布林头领 R16 / 亡者将军 R25 / 无头骑士 R32）的首发关卡映射，点击卡片任意位置均精准跳至对应首领决战回合。
+// 2. 解除主城顶栏“🏗️ 补建建筑”（#btnQuickBuildRec）与“🌾 升农田”（#btnUpgradeAllFarms）在铜币暂缺时的禁用锁并直显差额（·差X🪙），点击即可进入城内 2×2 建造选址预览或聚焦目标待升农田。
+// 3. 战场左上角战力评估栏（#wavePowerLine）在交战中点击升级为一键循环锁定高威胁集火目标并平滑移动镜头追焦。
+// [v14.0 商业化上线与交互打磨]
+// 1. 战前一键整备规划（computePreWaveReadinessPlan）纳入侧翼增援（getWaveReinforcementSurge）刺客（狼骑兵/幽魂）与远程施法者判定，确保第 21–24 回合等含侧翼刺客波次自动切换为“紧缩防刺客”阵型。
+// 2. 解除科技星盘顶栏“⚡ 推荐：科技名”（#btnQuickResearchRec）在资源暂不足时的禁用锁并直显差额（·差X📘+Y🪙），点击即可居中聚焦推荐节点（资源充足时直接完成研发）。
+// 3. 交战中波次敌军威胁筹码（#waveEnemyTags）与点击反馈（handleWaveThreatTagClick）同步统计 spawnQueue 待登场敌军数量，区分“🎯集火·待+N”、“⏳待登场”与“已歼灭”。
+// [v13.9 商业化上线与交互打磨]
+// 1. 移除 wireEvents 尾部覆盖顶层 handleHudPillShortcut 的冗余旧函数，恢复顶部状态栏“📘研究点”胶囊一键定位推荐科技/二段点击直接研发与“🪙铜币”胶囊满农田时一键升田。
+// 2. 主城已建建筑快捷条（#townPlotsGrid / resolvePlotChipActionBadge）同步训练营“🎖️可晋升”与研究塔“📘可研·N项”精确计数角标。
+// 3. 战场底部征兵栏（#recruitStrip）在部队满编时对已有在编士兵的卡片解除半透明置灰（opacity-55），改为天蓝色边框与“📍定位/强”提示，引导玩家点击定位与二段连点疗伤/晋升/训兵。
+// [v13.8 商业化上线与交互打磨]
+// 1. 科技星盘同心环阶进度胶囊（[data-tech-ring]，Ⅰ阶基础环/Ⅱ阶进阶环/Ⅲ阶终极环）新增基于当前选中索引的顺次循环定位与环阶进度提示。
+// 2. 科技星盘 8 流派快捷栏（#techBranchQuickBar）与外圈流派标题/扇区（[data-tech-branch]）升级为“优先可立即研发（canAfford）➔ 其次前置已解锁（preOk）➔ 再次未满级”智能循环寻路。
+// 3. 等距城内网格地图（getInCityBuildingActionBadge）为三大兵营（民兵营/弓箭手营/魔法师塔）新增实时可征兵胶囊（⚔️招·兵种名），并在城内训练营支持“🎖️可晋升”状态下二段点击或浮动栏一键原位晋升精锐。
+// [v13.7 商业化上线与交互打磨]
+// 1. 修复科技星盘顶栏“📘研究点”胶囊（#techRpPill）在研究点不足时误切回战场并自动触发野怪巡逻的问题，保持在科技星盘内循环定位可研节点或聚焦推荐节点并提示差额。
+// 2. 主城五页签抽屉导航栏（#townHubTabBar）实时呈现微标签（·可建 / ·可升 / ·免费 / ·可招 / ·N伤 / ·可训 / ·N🎟️），无需切换页签即可直观看到各功能抽屉待办状态。
+// 3. 图鉴 1–32 主线波次总表（codexFilter === "waves"）新增当前推进回合琥珀高亮边框与“🎯 当前回合”角标。
+// [v13.6 商业化上线与交互打磨]
+// 1. 解除医院（#btnHospitalHealAll）与训练营（#btnQuickTrainNext / #trainingUnitList）在建筑未建时的按钮禁用锁，统一修正训练营建造成本提示为 15🪙，点击直接触发一键选址建造。
+// 2. 训练营某兵种系已达 Lv.2 满级（+20%）且场上有在编部队时，按钮升级为“✅ Lv.2 满级 · ⚔️看部队”，点击自动切回战场追焦该系驻军并展开 #allyInspectBadge。
+// 3. 修复科技星盘顶栏“⏳科研周期”胶囊（#techRateInfo）在 T014/T015/T016 全部满级且研究点为 0 时误切回战场触发野怪巡逻的问题，保持在科技星盘内聚焦并回显最高科研效率。
+// [v13.5 商业化上线与交互打磨]
+// 1. 科技星盘突破节点（T002 招募学徒 / T003 民兵晋升 / T006 弓手晋升 / T007 护卫晋升）研发后在 #techDetailReq 新增一键成果直达按钮（建法师塔或原位晋升/招募精锐）。
+// 2. 修复主城【🍺 酒馆】抽屉页签二段点击（handleActiveTownHubTabSecondTap）中 UNIT_DATA[u.kind].hero 判定，并同步打开战场 #allyInspectBadge 检视栏。
+// 3. 打通图鉴（#viewCodex）点击“已在阵中”英雄卡片及满编在阵士兵卡片（⚔️ 战场定位 (N人) →）自动切回战场追焦选中并展开检视栏。
+// [v13.4 商业化上线与交互打磨]
+// 1. 修复酒馆英雄列表（#tavernHeroList）、城内酒馆浮动栏（#btnUpgradeSelectedFarm）与城内酒馆地块二段点击在英雄“📍在阵”时同步设置 selectedAllyUid 并触发镜头追焦与 #allyInspectBadge 检视栏。
+// 2. 战场画布（handleCanvasTap）对场上已选中精锐兵种（老练民兵/老练弓手/卫兵队长）二段点击打通 resolveTrainingLineageKey 训练营兵种系强化。
+// 3. 科技星盘 18 个节点底部进度条升级为按最大等级（1阶/3阶/5阶）切分的分段式等级晶格（data-tech-pip）。
+// [v13.3 商业化上线与交互打磨]
+// 1. 科技星盘详情与全屏浮动栏研发按钮（#btnResearchTech / #btnTechFloatResearch）在资源不足时直显精确缺口（· 差X📘+Y🪙），并屏蔽中心枢纽/环阶胶囊/外圈流派胶囊连点触发背景视角复位。
+// 2. 精锐兵种（老练民兵/老练弓手/卫兵队长）在底部征兵栏满编二段点击与战后 MVP 横幅二段点击中打通 resolveTrainingLineageKey 训练营兵种系强化。
+// 3. 顶部唯一导航栏【🏗️ 主城】动态行动角标（#townBadgeDot）升级为四态智能提示（可升城 / 可建 / 可升田 / 可训兵）。
 // 阶段1完整版战斗与成长扩展控制器（衔接 UnitData / TownDesign / TechnologyData / MonsterWaves）
 // 完整实现：C004定居点解锁、8士兵+3英雄招募、训练营、黑市商人、九职业索敌、罗恩/艾琳/奶蛙英雄技能、骷髅战将/亡灵召唤师/无头骑士首领技能
 //
@@ -1975,4 +2055,279 @@ export function getBossOverhaulProfile(kind: string, isPhase2: boolean): { sprit
 /** v11.5: Get 3-Phase Boss Dossier & Phase Threshold Ratios (55% Phase-2 Enrage, 24% Phase-3 Final Stand) */
 export function getBossPhaseThresholds(): { phase2Ratio: number; phase3Ratio: number } {
   return { phase2Ratio: 0.55, phase3Ratio: 0.24 };
+}
+
+
+/** v11.6: Get dynamic tactical counter-advice for defeat recovery modal on Boss and elite rounds */
+export function getDefeatTacticalAdvice(roundNum: number): string {
+  if (roundNum === 16) return "第16回合【部落战王·哥布林头领】魔抗-3惧怕魔法，建议锁定头领集火并在55%狂暴护盾开启时优先清理狼骑亲卫。";
+  if (roundNum === 25) return "第25回合【死灵统帅·亡者将军】护甲高达5，建议上阵2名魔法师破甲输出并全程锁定将军集火。";
+  if (roundNum === 32) return "第32回合【终局骑主·无头骑士】具备恐惧降甲3与幽冥裂魂斩，建议前排晋升护卫队长、配齐双法师+医疗队并锁定集火。";
+  return "建议回退至本回合战前检查点，执行一键整备治疗伤员、修补城防并点击高威胁敌军锁定集火。";
+}
+
+
+/** v12.1: 玩家集火指令防线协同判定：远程单位全距离响应集火；近战单位在集火目标进入主城外围防线（<=220px）或自身170px内时响应集火，若集火目标远在天边且有敌方突击单位冲入主城内圈（<=155px）或切后排，则近战优先拦截内圈威胁以防主城失守。 */
+export function shouldMeleeInterceptInnerBreacherBeforeDistantFocus(
+  isRangedAlly: boolean,
+  focusDistToKeep: number,
+  focusDistToUnit: number,
+  hasInnerKeepBreacher: boolean
+): boolean {
+  if (isRangedAlly) return false;
+  if (focusDistToKeep <= 220 || focusDistToUnit <= 170) return false;
+  return hasInnerKeepBreacher;
+}
+
+
+/** v12.2: 野怪巡逻队各时代预期铜币与科研收益预览提示 */
+export function getWildPatrolRewardPreviewText(completedRound: number, hasResearchTower: boolean, researchBonusVal: number, wildTimerSec: number): string {
+  if (completedRound < 2) return "🐺 讨伐(过R2开)";
+  const estCopper = completedRound >= 16 ? "~22🪙·" : (completedRound >= 8 ? "~14🪙·" : "~10🪙·");
+  const rpGain = hasResearchTower ? `+${1 + researchBonusVal}📘·` : "";
+  const wSec = Math.max(0, Math.ceil(wildTimerSec || 0));
+  return `🐺 讨伐(${estCopper}${rpGain}${wSec}s)`;
+}
+
+
+/** v12.3: 限时护盾到期自动消散与首领破盾失衡僵直（+0.45s 攻击间隔惩罚）结算 */
+export function resolveShieldAbsorptionWithStagger(
+  currentShield: number,
+  shieldUntil: number,
+  simClockVal: number,
+  incomingDamage: number,
+  isEnemyBoss: boolean
+): { remainingShield: number; remainingDamage: number; bossStaggered: boolean } {
+  let activeShield = (currentShield > 0 && shieldUntil > 0 && simClockVal >= shieldUntil) ? 0 : Math.max(0, currentShield);
+  if (activeShield <= 0) {
+    return { remainingShield: 0, remainingDamage: incomingDamage, bossStaggered: false };
+  }
+  const absorbed = Math.min(activeShield, incomingDamage);
+  const nextShield = Math.max(0, Number((activeShield - absorbed).toFixed(2)));
+  const remDmg = Math.max(0, incomingDamage - absorbed);
+  const shattered = activeShield > 0 && nextShield <= 0;
+  return {
+    remainingShield: nextShield,
+    remainingDamage: remDmg,
+    bossStaggered: shattered && isEnemyBoss
+  };
+}
+
+
+/** v12.4: 战前敌情芯片双击跳转图鉴种族分页映射与针对性阵型判定 */
+export function resolveWaveThreatTagGuidance(unitKind: string, unitRace: string, unitJob: string): {
+  codexTab: "goblin" | "undead" | "all";
+  recommendedFormation: "compact" | "expanded" | "standard";
+} {
+  const codexTab = unitRace === "亡灵" ? "undead" : (unitRace === "哥布林" || unitRace === "机械" ? "goblin" : "all");
+  const needCompact = unitJob === "刺客" || unitKind === "wolf" || unitKind === "ghost";
+  const needExpanded = unitJob === "攻城" || unitKind === "siegeGoblin" || unitKind === "necromancer" || unitKind === "skeletonMage" || unitKind === "mageGoblin" || unitKind === "healerGoblin";
+  return {
+    codexTab,
+    recommendedFormation: needCompact ? "compact" : (needExpanded ? "expanded" : "standard")
+  };
+}
+
+
+/** v12.5: 图鉴面板友军兵种科技+训练营加成属性对比格式化（如 "29 (+4)"） */
+export function formatCodexBoostedStat(baseVal: number, boostedVal: number): string {
+  const diff = Math.round((boostedVal - baseVal) * 10) / 10;
+  return diff > 0 ? `${boostedVal} (+${diff})` : `${boostedVal}`;
+}
+
+
+/** v12.6: 自动野怪巡逻防残血偷袭判定：当战后驻军人数不足或存在未治愈伤员（<85% HP）或主城低于75%耐久时，自动推迟野怪刷新，避免玩家未整备即遭偷袭。 */
+export function shouldDeferAutoWildPatrol(
+  aliveAllyCount: number,
+  minRequiredAllies: number,
+  hasWoundedAllyBelow85Pct: boolean,
+  castleHpRatio: number
+): boolean {
+  return aliveAllyCount < minRequiredAllies || hasWoundedAllyBelow85Pct || castleHpRatio < 0.75;
+}
+
+
+/** v12.7: 科技中心枢纽下一推荐科技资源差额计算与首领破盾失衡状态标签格式化 */
+export function formatRecommendedTechResourceGap(
+  pointCost: number,
+  coinCost: number,
+  currentResearch: number,
+  currentCopper: number
+): string {
+  const diffRp = Math.max(0, pointCost - Math.floor(currentResearch));
+  const diffCoin = coinCost ? Math.max(0, coinCost - Math.floor(currentCopper)) : 0;
+  if (diffRp === 0 && diffCoin === 0) return "可立即研发";
+  if (diffRp > 0 && diffCoin > 0) return `还差 ${diffRp}📘 + ${diffCoin}🪙`;
+  return diffRp > 0 ? `还差 ${diffRp}📘` : `还差 ${diffCoin}🪙`;
+}
+
+
+/** v12.8: 医院一键全疗按钮总恢复血量与总铜币消耗格式化 */
+export function formatHospitalHealAllButtonLabel(
+  hasHospital: boolean,
+  injuredCount: number,
+  totalMissingHp: number,
+  hpPerCopper: number = 20
+): string {
+  if (!hasHospital) return "🧱 需先建造医院 (15🪙)";
+  if (injuredCount <= 0 || totalMissingHp <= 0) return "✨ 驻军全员满血";
+  const miss = Math.ceil(totalMissingHp);
+  const cost = Math.max(1, Math.ceil(miss / Math.max(1, hpPerCopper)));
+  return `💚 一键全疗 ${injuredCount}名伤员 (+${miss}❤️ · ${cost}🪙)`;
+}
+
+
+/** v12.9: 战后 MVP 捷报点击定位同兵种最高战绩个体评分公式（输出 + 治疗*1.2 + 承伤*0.45） */
+export function computeUnitMvpContributionScore(totalDmg: number, totalHeal: number, totalTaken: number): number {
+  return (totalDmg || 0) + (totalHeal || 0) * 1.2 + (totalTaken || 0) * 0.45;
+}
+
+
+/** v13.0: 战败 60% 紧急抢修激励广告恢复计算：恢复主城 60% 最大耐久、赋予幸存友军 22% 生命护盾（5s）并计算近城敌军 45px 震退位移 */
+export function computeEmergencyAdReviveOutcome(
+  maxCastleHpVal: number,
+  allyMaxHp: number,
+  enemyX: number,
+  enemyY: number,
+  keepX: number,
+  keepY: number
+): { restoredCastleHp: number; allyShield: number; pushedX: number; pushedY: number } {
+  const restoredCastleHp = Math.round(maxCastleHpVal * 0.60);
+  const allyShield = Math.round(allyMaxHp * 0.22);
+  const dx = enemyX - keepX;
+  const dy = enemyY - keepY;
+  const d = Math.hypot(dx, dy) || 1;
+  const pushedX = d < 160 ? enemyX + (dx / d) * 45 : enemyX;
+  const pushedY = d < 160 ? enemyY + (dy / d) * 45 : enemyY;
+  return { restoredCastleHp, allyShield, pushedX, pushedY };
+}
+
+
+/** v13.1: 科技星盘全局已生效科技加成汇总格式化 */
+export function computeGlobalTechBonusSummary(techs: Record<string, number>): string {
+  if (!techs) return "尚未研发科技加成";
+  const buffs: string[] = [];
+  if (techs.T001) buffs.push(`战士攻+${techs.T001}`);
+  if (techs.T004) buffs.push(`法师攻+${techs.T004 * 2}`);
+  if (techs.T005) buffs.push(`弓手攻+${techs.T005}`);
+  if (techs.T008) buffs.push(`护卫甲+${techs.T008}`);
+  if (techs.T011) buffs.push(`单田+${techs.T011}🪙`);
+  if (techs.T010) buffs.push("产粮8s");
+  if (techs.T012) buffs.push("城防+50");
+  if (techs.T013) buffs.push(`城自愈+${techs.T013}/s`);
+  if (techs.T015 || techs.T016) buffs.push(`科研+${(techs.T015 || 0) + (techs.T016 ? 1 : 0)}📘`);
+  if (techs.T017) buffs.push("驻军自愈+1/s");
+  if (techs.T018) buffs.push("医疗+1💚");
+  return buffs.length > 0 ? buffs.join(" · ") : "尚未研发科技加成";
+}
+
+
+/** v13.2: 友军战术检视条单点疗伤费用与顶栏主城自愈速率格式化 */
+export function formatSingleAllyHealQuote(
+  hasHospital: boolean,
+  currentHp: number,
+  maxHpVal: number,
+  hpPerCopper: number = 20
+): { missingHp: number; copperCost: number; label: string } {
+  const missingHp = Math.max(0, Math.ceil(maxHpVal - currentHp));
+  if (missingHp <= 0) return { missingHp: 0, copperCost: 0, label: "" };
+  if (!hasHospital) return { missingHp, copperCost: 0, label: "🧱 建医院疗伤" };
+  const copperCost = Math.max(1, Math.ceil(missingHp / Math.max(1, hpPerCopper)));
+  return { missingHp, copperCost, label: `💊 疗伤(+${missingHp}❤️·${copperCost}🪙)` };
+}
+
+
+/** v15.3: Resolve in-city selected building dynamic hint & full-cap military camp battlefield locator */
+export function resolveInCityCampActionState(
+  campUnitName: string,
+  canRecruitOk: boolean,
+  canReplace: boolean,
+  isFullCap: boolean,
+  reason: string
+): { buttonLabel: string; hintLabel: string; shouldLocateOnBattlefield: boolean } {
+  const shouldLocate = !canRecruitOk && !canReplace && isFullCap;
+  return {
+    buttonLabel: shouldLocate ? `📍 战场看${campUnitName} (满员)` : `⚔️ 招${campUnitName} (${reason})`,
+    hintLabel: shouldLocate ? `部队已满员·再点一次去战场看${campUnitName}` : `再点一次招${campUnitName}·${reason}`,
+    shouldLocateOnBattlefield: shouldLocate,
+  };
+}
+
+
+/** v15.4: Resolve Tavern hero-specific action badge & Tech Tree prerequisite cost/shortfall button label */
+export function resolveTavernHeroActionBadge(
+  ronActive: boolean,
+  ronFreeUsed: boolean,
+  ailinActive: boolean,
+  ailinUnlocked: boolean,
+  copper: number
+): string | null {
+  if (!ronActive && !ronFreeUsed) return "👑免费罗恩";
+  if (!ronActive && copper >= 60) return "👑重招罗恩";
+  if (!ailinActive && copper >= (ailinUnlocked ? 60 : 120)) {
+    return ailinUnlocked ? "👑重招艾琳" : "👑招艾琳";
+  }
+  return null;
+}
+
+/** v15.5: Resolve top navigation #townBadgeDot 7-state label including hero summon readiness */
+export function resolveTownNavBadge7State(
+  canUpTown: boolean,
+  canBuildRec: boolean,
+  canUpFarm: boolean,
+  canUpTrain: boolean,
+  canPromoAny: boolean,
+  canHealAny: boolean,
+  canSummonHero: boolean
+): string | null {
+  if (canUpTown) return "可升城";
+  if (canBuildRec) return "可建";
+  if (canUpFarm) return "可升田";
+  if (canUpTrain) return "可训兵";
+  if (canPromoAny) return "可晋升";
+  if (canHealAny) return "可疗";
+  if (canSummonHero) return "可招英雄";
+  return null;
+}
+
+/** v15.6: Resolve deployed unit's dedicated Tech Tree synergy node after Training Camp mastery */
+export function resolveUnitSynergyTechId(unitKind: string): string | null {
+  const map: Record<string, string> = {
+    mage: "T004",
+    guardCaptain: "T008",
+    guard: "T008",
+    veteranMilitia: "T001",
+    militia: "T001",
+    veteranArcher: "T005",
+    archer: "T005",
+    medic: "T018",
+  };
+  return map[unitKind] || null;
+}
+
+/** v15.7: Format unbuilt prerequisite building label with cost and live copper shortfall */
+export function formatUnbuiltBuildingReqReason(buildingName: string, buildingCost: number, currentCopper: number): string {
+  const gap = Math.max(0, buildingCost - Math.floor(currentCopper));
+  return `需${buildingName}(${buildingCost}🪙${gap > 0 ? "·差" + gap + "🪙" : ""})`;
+}
+
+/** v15.8: Format unresearched prerequisite tech label with research point cost and live shortfall */
+export function formatUnresearchedTechReqReason(techName: string, pointCost: number, currentResearch: number): string {
+  const gap = Math.max(0, pointCost - Math.floor(currentResearch));
+  return `需研${techName}(${pointCost}📘${gap > 0 ? "·差" + gap + "📘" : ""})`;
+}
+
+/** v15.9: Format unmet town tier requirement with round gate or upgrade copper cost and live shortfall */
+export function formatUnmetTownReqReason(
+  townName: string,
+  reqRound: number,
+  townCost: number,
+  completedRound: number,
+  currentCopper: number
+): string {
+  if (completedRound < reqRound) {
+    return `需${townName}(过第${reqRound}关·${townCost}🪙)`;
+  }
+  const gap = Math.max(0, townCost - Math.floor(currentCopper));
+  return `需${townName}(${townCost}🪙${gap > 0 ? "·差" + gap + "🪙" : ""})`;
 }
